@@ -104,16 +104,21 @@ artifacts = {
 
 print(f"📦 Emballage du modèle avec Seuil={OPTIMAL_THRESHOLD}...")
 
-with mlflow.start_run(run_name="Production_Scoring_Final") as run:
-    
-    mlflow.pyfunc.log_model(
-        artifact_path="scoring_model_final",
-        python_model=CreditScoringWrapper(),
-        artifacts=artifacts,
-        # On force imbalanced-learn et scikit-learn compatible
-        pip_requirements=["joblib", "scikit-learn", "shap", "pandas", "numpy", "imbalanced-learn"]
-    )
+output_path = "model_prod"
 
+# Nettoyage si le dossier existe déjà
+import shutil
+if os.path.exists(output_path):
+    shutil.rmtree(output_path)
+
+mlflow.pyfunc.save_model(
+    path=output_path,
+    python_model=CreditScoringWrapper(),
+    artifacts=artifacts,
+    pip_requirements=["joblib", "scikit-learn", "shap", "pandas", "numpy", "imbalanced-learn"]
+)
+
+print(f"✅ Modèle sauvegardé dans le dossier : {output_path}")
 print("\n" + "="*60)
 print(f"✅ MODÈLE DE PRODUCTION PRÊT !")
 print(f"👉 ID du Run : {run.info.run_id}")
