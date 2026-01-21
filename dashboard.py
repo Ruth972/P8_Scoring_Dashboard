@@ -1,96 +1,252 @@
-# dashboard.py
 import streamlit as st
 import requests
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
 
-# Ton URL API Render (Vérifie qu'elle est correcte)
-API_URL = "https://api-scoring-v246.onrender.com/predict" 
+# ==============================================================================
+# CONFIGURATION & CONSTANTES
+# ==============================================================================
 
-# Configuration de la page
-st.set_page_config(page_title="Scoring Crédit Dashboard", layout="wide")
+# URL de l'endpoint de prédiction (API).
+# Remplacer par l'URL de production Render une fois le déploiement effectué.
+# Environnement Local : "http://127.0.0.1:8000/predict"
+API_URL = "https://votre-nouveau-render-p8.onrender.com/predict"
 
-st.title("🏦 Dashboard d'Octroi de Crédit")
-st.markdown("Outil d'aide à la décision pour les chargés de clientèle.")
+# Configuration de la page Streamlit
+st.set_page_config(
+    page_title="Dashboard Scoring Crédit",
+    page_icon="🏦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- CHARGEMENT DES DONNÉES ---
+# ==============================================================================
+# GESTION DES DONNÉES (DATA LOADING)
+# ==============================================================================
+
 @st.cache_data
 def load_data():
-    # Assure-toi que ce fichier existe bien sur GitHub
-    data = pd.read_csv("donnees_sample.csv")
-    return data
-
-with st.spinner("Chargement des données clients..."):
-    df = load_data()
-
-# --- BARRE LATÉRALE ---
-st.sidebar.header("🔍 Sélection du dossier")
-# On récupère la liste des IDs
-client_ids = df['SK_ID_CURR'].tolist()
-selected_id = st.sidebar.selectbox("ID Client", client_ids)
-
-# --- ANALYSE DU CLIENT ---
-if st.sidebar.button("Lancer l'analyse"):
+    """
+    Charge le jeu de données client (échantillon) pour la navigation.
+    Utilise le cache Streamlit pour optimiser les performances.
     
-    # 1. Récupération des données du client (la ligne complète)
-    client_row = df[df['SK_ID_CURR'] == selected_id].iloc[0]
-    
-    # 2. Préparation des données pour l'API (CORRECTION CRUCIALE ICI)
-    # On convertit en dictionnaire
-    features_raw = client_row.to_dict()
-    
-    # On nettoie les données :
-    # - On enlève les colonnes inutiles (ID, Target, index...)
-    # - On remplace les NaN (valeurs vides) par 0 ou None, sinon le JSON plante !
-    cols_a_exclure = ['TARGET', 'SK_ID_CURR', 'index', 'Unnamed: 0']
-    
-    features = {}
-    for k, v in features_raw.items():
-        if k not in cols_a_exclure:
-            # Si la valeur est vide (NaN), on met 0 pour que l'API accepte
-            if pd.isna(v):
-                features[k] = 0
-            else:
-                features[k] = v
-    
-    # 3. Appel à l'API
+    Returns:
+        pd.DataFrame: DataFrame contenant les données clients.
+    """
     try:
-        # On envoie le dictionnaire propre
-        response = requests.post(API_URL, json={"features": features})
+        # Chargement du fichier CSV local
+        df = pd.read_csv("donnees_sample.csv")
+        return df
+    except FileNotFoundError:
+        st.error("Erreur Critique : Le fichier source 'donnees_sample.csv' est introuvable.")
+        return pd.DataFrame()
+
+# Initialisation du DataFrame
+df = load_data()
+
+# ==============================================================================
+# INTERFACE UTILISATEUR : BARRE LATÉRALE (SIDEBAR)
+# ==============================================================================
+
+st.sidebar.header("🔍 Sélection du Dossier Client")
+
+if not df.empty:
+    # Création de la liste de sélection par ID Client (SK_ID_CURR)
+    id_list = df['SK_ID_CURR'].unique()
+    selected_id = st.sidebar.selectbox("Identifiant Client (ID)", id_list)
+    
+    # Bouton de déclenchement de l'analyse
+    btn_predict = st.sidebar.button("📊 Lancer l'analyse de risque")
+else:
+    st.sidebar.warning("Base de données clients indisponible.")
+    selected_id = None
+    btn_predict = False
+
+st.sidebar.markdown("---")
+st.sidebar.info(
+    "**Note :** Ce dashboard est une interface d'aide à la décision. "
+    "Les scores sont générés par un modèle de Machine Learning via API."
+)
+
+# ==============================================================================
+# CORPS PRINCIPAL DE L'APPLICATION
+# ==============================================================================
+
+st.title("🏦 Dashboard de Scoring Crédit")
+st.markdown("Analyse du risque de crédit et explicabilité de la décision.")
+
+if btn_predict and selected_id:
+    
+    # --------------------------------------------------------------------------
+    # 1. PRÉPARATION DES DONNÉES (DATA PREPROCESSING)
+    # --------------------------------------------------------------------------
+    # Extraction de la ligne correspondant au client sélectionné
+    client_row = df[df['SK_ID_CURR'] == selected_id]
+    
+    if not client_row.empty:
+        # Exclusion des colonnes techniques non requises par le modèle
+        cols_excluded = ['TARGET', 'SK_ID_CURR', 'index', 'Unnamed: 0']
         
-        if response.status_code == 200:
-            result = response.json()
-            score = result['score']
-            decision = result['decision']
-            seuil = result['threshold']
-            
-            # --- AFFICHAGE DES RÉSULTATS ---
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.header(f"Décision : {decision}")
-                if decision == "ACCORDÉ":
-                    st.success("✅ Risque Faible (Crédit Accordé)")
-                else:
-                    st.error("❌ Risque Élevé (Crédit Refusé)")
-            
-            with col2:
-                st.metric("Probabilité de Défaut", f"{score:.1%}")
-                # Barre de progression (rouge si élevé, vert si faible)
-                st.progress(int(score * 100))
-                st.caption(f"Seuil limite : {seuil*100}%")
-            
-            # Affichage des données brutes (Pour vérifier ce qu'on envoie)
-            with st.expander("Voir les détails techniques du dossier"):
-                st.write("Données envoyées à l'IA :")
-                st.json(features)
+        # Conversion en dictionnaire pour sérialisation JSON
+        client_data_dict = client_row.drop(columns=cols_excluded, errors='ignore').iloc[0].to_dict()
+        
+        # Gestion des valeurs manquantes (NaN) :
+        # JSON ne supporte pas NaN. On remplace par 0 ou None selon la logique métier.
+        clean_features = {k: (0 if pd.isna(v) else v) for k, v in client_data_dict.items()}
+
+        # ----------------------------------------------------------------------
+        # 2. APPEL API (INFERENCE REQUEST)
+        # ----------------------------------------------------------------------
+        with st.spinner('Interrogation du moteur de scoring...'):
+            try:
+                # Envoi de la requête POST à l'API
+                response = requests.post(API_URL, json={"features": clean_features})
                 
-        else:
-            st.error(f"Erreur API ({response.status_code})")
-            st.write(response.text)
-            
-    except requests.exceptions.ConnectionError:
-        st.error("🚨 Impossible de contacter l'API.")
-        st.warning(f"Vérifiez l'URL : {API_URL}")
-    except Exception as e:
-        st.error(f"Une erreur inattendue est survenue : {e}")
+                # Vérification du code statut HTTP
+                if response.status_code == 200:
+                    api_result = response.json()
+                    
+                    # Extraction des indicateurs clés
+                    score = api_result.get('score', 0)
+                    decision = api_result.get('decision', "INCONNU")
+                    threshold = api_result.get('threshold', 0.5)
+                    shap_values = api_result.get('shap_values', {})
+                    
+                    # ----------------------------------------------------------
+                    # 3. VISUALISATION : SCORE & DÉCISION
+                    # ----------------------------------------------------------
+                    st.subheader("1️⃣ Synthèse de la décision")
+                    col1, col2 = st.columns([1, 2])
+                    
+                    with col1:
+                        # Indicateur visuel (Badge de décision)
+                        color = "green" if decision == "ACCORDÉ" else "red"
+                        st.markdown(f"""
+                            <div style="text-align: center; border: 2px solid {color}; padding: 15px; border-radius: 10px; background-color: rgba(0,0,0,0.05);">
+                                <h2 style="color: {color}; margin:0;">{decision}</h2>
+                                <hr style="margin: 10px 0;">
+                                <p style="margin:0; font-size: 1.1em;">Probabilité de défaut : <strong>{score:.1%}</strong></p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                    with col2:
+                        # Graphique Jauge (Gauge Chart) via Plotly
+                        fig_gauge = go.Figure(go.Indicator(
+                            mode="gauge+number+delta",
+                            value=score,
+                            domain={'x': [0, 1], 'y': [0, 1]},
+                            title={'text': "Score de Risque"},
+                            # Delta par rapport au seuil critique
+                            delta={'reference': threshold, 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
+                            gauge={
+                                'axis': {'range': [0, 1]},
+                                'bar': {'color': "black"}, # Indicateur actuel
+                                'steps': [
+                                    {'range': [0, threshold], 'color': "#2ecc71"}, # Zone Verte (Sûre)
+                                    {'range': [threshold, 1], 'color': "#e74c3c"}  # Zone Rouge (Risque)
+                                ],
+                                'threshold': {
+                                    'line': {'color': "red", 'width': 4},
+                                    'thickness': 0.75,
+                                    'value': threshold
+                                }
+                            }
+                        ))
+                        # Ajustement des marges pour un affichage compact
+                        fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+                        st.plotly_chart(fig_gauge, use_container_width=True)
+
+                    # ----------------------------------------------------------
+                    # 4. EXPLICABILITÉ DU MODÈLE (SHAP VALUES)
+                    # ----------------------------------------------------------
+                    st.markdown("---")
+                    st.subheader("2️⃣ Interprétabilité : Facteurs d'influence")
+                    st.caption("Analyse des variables ayant le plus impacté le score (Feature Importance Locale).")
+                    
+                    if shap_values:
+                        # Conversion dict -> DataFrame pour manipulation
+                        shap_df = pd.DataFrame(list(shap_values.items()), columns=['Feature', 'Impact'])
+                        
+                        # Tri par impact absolu pour identifier les drivers principaux
+                        shap_df['Abs_Impact'] = shap_df['Impact'].abs()
+                        top_shap = shap_df.sort_values(by='Abs_Impact', ascending=False).head(15)
+                        
+                        # Graphique Bar Plot Interactif
+                        fig_shap = px.bar(
+                            top_shap.sort_values(by='Impact', ascending=True), # Tri pour l'ordre d'affichage visuel
+                            x='Impact', 
+                            y='Feature', 
+                            orientation='h',
+                            color='Impact',
+                            # Échelle de couleur divergente : Vert (Baisse risque) <-> Rouge (Hausse risque)
+                            color_continuous_scale=['#2ecc71', '#e74c3c'], 
+                            title="Top 15 des variables contributrices"
+                        )
+                        st.plotly_chart(fig_shap, use_container_width=True)
+                    else:
+                        st.warning("⚠️ Les données d'explicabilité (SHAP) ne sont pas disponibles pour ce dossier.")
+
+                    # ----------------------------------------------------------
+                    # 5. ANALYSE COMPARATIVE (BI-VARIÉE)
+                    # ----------------------------------------------------------
+                    st.markdown("---")
+                    st.subheader("3️⃣ Positionnement du client")
+                    
+                    # Sélecteur de variable pour l'analyse comparative
+                    compare_var = st.selectbox(
+                        "Sélectionner une variable pour comparer le client à la population :", 
+                        ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH'],
+                        index=0
+                    )
+                    
+                    if compare_var in df.columns:
+                        client_val = client_row[compare_var].values[0]
+                        
+                        # Histogramme de distribution globale
+                        fig_dist = px.histogram(
+                            df, 
+                            x=compare_var, 
+                            nbins=50, 
+                            title=f"Distribution de la variable : {compare_var}",
+                            color_discrete_sequence=['#95a5a6'], # Gris neutre pour le fond
+                            opacity=0.6,
+                            labels={compare_var: "Valeur", "count": "Nombre de clients"}
+                        )
+                        
+                        # Ajout d'une ligne verticale marquant la position du client actuel
+                        fig_dist.add_vline(
+                            x=client_val, 
+                            line_width=3, 
+                            line_dash="dash", 
+                            line_color="#e74c3c", # Rouge pour visibilité
+                            annotation_text="Client Sélectionné", 
+                            annotation_position="top right"
+                        )
+                        st.plotly_chart(fig_dist, use_container_width=True)
+                        
+                        # Affichage de la valeur exacte
+                        st.metric(f"Valeur du client ({compare_var})", f"{client_val:,.2f}")
+                    
+                    # ----------------------------------------------------------
+                    # 6. AUDIT & DONNÉES BRUTES
+                    # ----------------------------------------------------------
+                    with st.expander("🔎 Audit : Voir les données brutes transmises"):
+                        st.write("Données JSON envoyées à l'API :")
+                        st.json(clean_features)
+
+                else:
+                    # Gestion des erreurs HTTP (404, 500, etc.)
+                    st.error(f"Échec de la communication API (Code: {response.status_code})")
+                    st.code(response.text)
+
+            except requests.exceptions.ConnectionError:
+                # Gestion des erreurs de connexion (API éteinte ou URL invalide)
+                st.error("🚨 Connexion impossible au serveur de prédiction.")
+                st.warning(f"Vérifiez que l'URL de l'API est correcte et que le service est actif : {API_URL}")
+            except Exception as e:
+                # Gestion générique des exceptions
+                st.error(f"Une erreur technique est survenue : {e}")
+
+    else:
+        st.error("Identifiant client introuvable dans la base de données locale.")

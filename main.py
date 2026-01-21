@@ -3,107 +3,119 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pandas as pd
 import mlflow.sklearn
+import shap  # --- P8 ADDITION : Import de SHAP
+import numpy as np
 
 # Initialisation de l'application FastAPI
 app = FastAPI(
-    title="API Scoring Crédit",
-    description="Microservice de prédiction du risque de crédit intégrant MLflow et Docker.",
-    version="1.0.0"
+    title="API Scoring Crédit & Explainability",
+    description="Microservice de prédiction du risque de crédit avec explicabilité SHAP.",
+    version="1.1.0"
 )
 
 # --- CONFIGURATION MLOPS ---
-# Définition du chemin vers l'artefact du modèle MLflow.
-# Utilisation d'un chemin relatif pour garantir la compatibilité entre l'environnement local et le conteneur Docker.
 MODEL_PATH = "./mlruns/9/models/m-0a84d69a2e314f0e82736c01fbcdd540/artifacts"
 
-# --- CHARGEMENT DU MODÈLE AU DÉMARRAGE ---
+# --- CHARGEMENT DU MODÈLE ET EXPLAINER ---
 print(f"Initialisation : Chargement du modèle depuis {MODEL_PATH}...")
+model = None
+explainer = None  # --- P8 ADDITION : Variable pour l'explainer
+
 try:
-    # Chargement du modèle via le flavor 'sklearn' de MLflow.
-    # Cela permet de récupérer l'objet modèle original et d'utiliser ses méthodes natives (ex: predict_proba).
     model = mlflow.sklearn.load_model(MODEL_PATH)
-    print("Succès : Le modèle de scoring est chargé et prêt.")
+    print("Succès : Le modèle de scoring est chargé.")
+    
+    # --- P8 ADDITION : Initialisation de l'explainer SHAP ---
+    # On tente de créer un TreeExplainer (optimisé pour XGBoost/LGBM/RandomForest)
+    try:
+        print("Initialisation de l'explainer SHAP...")
+        # Note : Si ton modèle est dans un Pipeline, il faudra peut-être accéder à model.named_steps['classifier']
+        explainer = shap.TreeExplainer(model)
+        print("Succès : Explainer SHAP prêt.")
+    except Exception as e_shap:
+        print(f"Attention : Impossible d'initier TreeExplainer ({e_shap}). L'explicabilité ne sera pas disponible.")
+        
 except Exception as e:
-    print(f"Erreur Critique : Échec du chargement du modèle MLflow via {MODEL_PATH}.")
-    print(f"Exception : {e}")
-    # Le modèle reste à None, l'API démarrera mais les endpoints de prédiction renverront une erreur gérée.
-    model = None
+    print(f"Erreur Critique : Échec du chargement du modèle. Exception : {e}")
 
 class ClientData(BaseModel):
-    """
-    Modèle de données pour la validation des entrées API.
-    Attend un dictionnaire 'features' contenant les variables du client.
-    """
     features: dict
 
 @app.get("/")
 def health_check():
-    """Endpoint de vérification de l'état du service (Health Check)."""
     return {
         "status": "API en ligne",
         "model_loaded": model is not None,
-        "version": "1.0.0"
+        "explainer_ready": explainer is not None
     }
 
 @app.post("/predict")
 def predict_credit_score(data: ClientData):
-    """
-    Endpoint principal de prédiction.
-    1. Reçoit les données client.
-    2. Nettoie et aligne les colonnes (remplit les manquantes par 0).
-    3. Calcule la probabilité de défaut.
-    """
-    
-    # Vérification de la disponibilité du modèle
     if not model:
-        raise HTTPException(status_code=503, detail="Service indisponible : Le modèle n'est pas chargé.")
+        raise HTTPException(status_code=503, detail="Service indisponible : Modèle non chargé.")
     
     try:
-        # 1. Transformation des données d'entrée en DataFrame Pandas
+        # 1. Transformation en DataFrame
         df = pd.DataFrame([data.features])
         
-        # 2. Prétraitement initial (Suppression des ID)
+        # 2. Nettoyage technique
         cols_techniques = ['SK_ID_CURR', 'TARGET', 'index', 'Unnamed: 0']
         df_clean = df.drop(columns=[c for c in cols_techniques if c in df.columns], errors='ignore')
 
-        # ======================================================================
-        # 🛡️ BLOC DE SÉCURITÉ : ALIGNEMENT AUTOMATIQUE DES COLONNES
-        # ======================================================================
-        # Ce bloc est indispensable pour que le modèle accepte des données incomplètes
-        # (comme celles envoyées par le test unitaire).
+        # 3. Alignement des colonnes (Sécurité)
         if hasattr(model, "feature_names_in_"):
             expected_cols = model.feature_names_in_
-            
-            # A. On identifie les colonnes manquantes
             missing_cols = set(expected_cols) - set(df_clean.columns)
-            
-            # B. On les remplit avec 0 (valeur neutre)
             if missing_cols:
                 for c in missing_cols:
                     df_clean[c] = 0
-            
-            # C. On réordonne les colonnes strictement comme le modèle le veut
             df_clean = df_clean[expected_cols]
-        # ======================================================================
 
-        # 3. Inférence (Calcul du Score)
+        # 4. Prédiction
         proba_defaut = model.predict_proba(df_clean)[:, 1][0]
         
-        # 4. Logique Métier (Seuil de décision optimisé)
-        seuil_risque = 0.06699999999999995 
-        
+        # 5. Seuil (Logique Métier)
+        seuil_risque = 0.067 # Arrondi pour la lisibilité
         decision_finale = "REFUSÉ" if proba_defaut > seuil_risque else "ACCORDÉ"
         
+        # --- P8 ADDITION : Calcul des SHAP Values ---
+        shap_data = {}
+        base_value = 0
+        
+        if explainer:
+            # Calcul des shap values
+            shap_values = explainer.shap_values(df_clean)
+            
+            # Gestion du format de retour de SHAP (dépend de la version et du modèle)
+            # Cas 1: SHAP renvoie une liste [valeurs_classe_0, valeurs_classe_1] -> On prend l'indice 1
+            if isinstance(shap_values, list):
+                vals = shap_values[1][0] # [1] pour la classe positive, [0] pour le 1er échantillon
+            # Cas 2: SHAP renvoie un array directement (rare pour classifier binaire mais possible)
+            else:
+                vals = shap_values[0]
+            
+            # On convertit en liste simple pour le JSON
+            shap_data = dict(zip(df_clean.columns, vals.tolist()))
+            
+            # Récupération de l'expected_value (la moyenne globale)
+            if isinstance(explainer.expected_value, list) or isinstance(explainer.expected_value, np.ndarray):
+                 base_value = float(explainer.expected_value[1])
+            else:
+                 base_value = float(explainer.expected_value)
+
         return {
             "score": float(proba_defaut),
             "decision": decision_finale,
             "threshold": seuil_risque,
-            "model_source": "MLflow Registry"
+            # Nouvelles clés pour le dashboard
+            "shap_values": shap_data, 
+            "base_value": base_value
         }
 
     except Exception as e:
+        import traceback
+        traceback.print_exc() # Utile pour débugger dans la console
         raise HTTPException(status_code=400, detail=f"Erreur de traitement : {str(e)}")
 
 if __name__ == "__main__":
-    # Lancement du serveur (Configuration adaptée pour le déploiement Docker)
     uvicorn.run(app, host="0.0.0.0", port=8000)
