@@ -1,0 +1,7 @@
+mlflow==3.7.0
+joblib
+scikit-learn
+shap
+pandas
+numpy
+imbalanced-learn

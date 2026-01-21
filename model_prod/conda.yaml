@@ -1,0 +1,14 @@
+channels:
+- conda-forge
+dependencies:
+- python=3.12.8
+- pip<=25.0
+- pip:
+  - mlflow==3.7.0
+  - joblib
+  - scikit-learn
+  - shap
+  - pandas
+  - numpy
+  - imbalanced-learn
+name: mlflow-env
