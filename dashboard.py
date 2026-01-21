@@ -8,8 +8,8 @@ import plotly.express as px
 # CONFIGURATION & CONSTANTES
 # ==============================================================================
 
-# URL de l'endpoint de prédiction (API).
-# Environnement Local : "http://127.0.0.1:8000/predict"
+# URL de l'endpoint de prédiction (API MLflow).
+# Note : Avec MLflow Serving, l'endpoint standard est "/invocations"
 API_URL = "https://p8-scoring-dashboard.onrender.com/invocations"
 
 # Configuration de la page Streamlit
@@ -29,7 +29,6 @@ def load_data():
     """
     Charge le jeu de données client (échantillon) pour la navigation.
     Utilise le cache Streamlit pour optimiser les performances.
-    
     Returns:
         pd.DataFrame: DataFrame contenant les données clients.
     """
@@ -100,9 +99,7 @@ if btn_predict and selected_id:
         # (Format MLflow Serving)
         with st.spinner('Interrogation du modèle MLflow...'):
             try:
-                # --- CHANGEMENT CLÉ ICI ---
                 # MLflow attend un format "dataframe_records"
-                # On met les features dans une liste (comme une ligne de tableau)
                 payload = {
                     "dataframe_records": [clean_features]
                 }
@@ -110,28 +107,51 @@ if btn_predict and selected_id:
                 response = requests.post(API_URL, json=payload)
                 
                 if response.status_code == 200:
-                    # Le wrapper renvoie directement le JSON que nous avons défini
                     api_result = response.json()
                     
-                    # --- Extraction des données (Attention aux listes) ---
-                    # Comme on envoie 1 client, on récupère des listes à 1 élément
-                    # On utilise [0] pour prendre la première valeur si c'est une liste
-                    
-                    score_raw = api_result.get('score', [0])
+                    # --- 🔍 DEBUG (Visible si tu cliques dessus) ---
+                    with st.expander("🛠️ Debug Technique - Réponse brute de l'API"):
+                        st.write("Structure reçue :", api_result)
+
+                    # --- ✅ DÉBALLAGE INTELLIGENT (C'est ici qu'on corrige l'erreur) ---
+                    # 1. Si MLflow renvoie {"predictions": [...]}
+                    if isinstance(api_result, dict) and "predictions" in api_result:
+                        data = api_result["predictions"][0]
+                    # 2. Si MLflow renvoie directement une liste [{...}]
+                    elif isinstance(api_result, list):
+                        data = api_result[0]
+                    # 3. Si c'est déjà le bon dictionnaire
+                    else:
+                        data = api_result
+
+                    # --- Extraction sécurisée des valeurs ---
+                    # Score
+                    score_raw = data.get('score', [0])
+                    # Si c'est une liste (ex: [0.12]), on prend le premier élément
                     score = score_raw[0] if isinstance(score_raw, list) else score_raw
                     
-                    decision_raw = api_result.get('decision', ["Inconnu"])
+                    # Décision
+                    decision_raw = data.get('decision', ["Inconnu"])
                     decision = decision_raw[0] if isinstance(decision_raw, list) else decision_raw
                     
-                    threshold = api_result.get('threshold', 0.5)
+                    # Seuil
+                    threshold = data.get('threshold', 0.5)
                     
-                    # SHAP est déjà une liste de valeurs
-                    shap_values_raw = api_result.get('shap_values', [])
-                    # Si SHAP est une liste de listes (ex: [[val1, val2]]), on prend la première
-                    if shap_values_raw and isinstance(shap_values_raw[0], list):
-                         shap_values = dict(zip(clean_features.keys(), shap_values_raw[0]))
+                    # SHAP Values
+                    shap_values_raw = data.get('shap_values', [])
+                    
+                    # Reconstruction du dictionnaire SHAP {Feature: Impact}
+                    if shap_values_raw:
+                        # Si SHAP est une liste de listes (ex: [[val1, val2]]), on prend la 1ère
+                        if isinstance(shap_values_raw[0], list):
+                             raw_list = shap_values_raw[0]
+                        else:
+                             raw_list = shap_values_raw
+                        
+                        # On associe chaque valeur à son nom de colonne
+                        shap_values = dict(zip(clean_features.keys(), raw_list))
                     else:
-                         shap_values = dict(zip(clean_features.keys(), shap_values_raw))
+                        shap_values = {}
                     
                     # ----------------------------------------------------------
                     # 3. VISUALISATION : SCORE & DÉCISION
