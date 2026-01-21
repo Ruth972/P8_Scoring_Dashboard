@@ -193,7 +193,7 @@ if btn_predict and selected_id:
                             }
                         ))
                         # Ajustement des marges pour un affichage compact
-                        fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+                        fig_gauge.update_layout(height=300, margin=dict(l=20, r=20, t=60, b=20))
                         st.plotly_chart(fig_gauge, use_container_width=True)
 
                     # ----------------------------------------------------------
