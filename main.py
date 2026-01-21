@@ -5,6 +5,7 @@ import pandas as pd
 import mlflow.sklearn
 import shap  # --- P8 ADDITION : Import de SHAP
 import numpy as np
+import os
 
 # Initialisation de l'application FastAPI
 app = FastAPI(
@@ -15,6 +16,17 @@ app = FastAPI(
 
 # --- CONFIGURATION MLOPS ---
 MODEL_PATH = "./mlruns/9/models/m-0a84d69a2e314f0e82736c01fbcdd540/artifacts"
+
+# --- BLOC DE DÉBOGAGE (A supprimer plus tard) ---
+print(f"Chemin actuel (CWD) : {os.getcwd()}")
+if os.path.exists(MODEL_PATH):
+    print(f"✅ Le dossier existe. Contenu : {os.listdir(MODEL_PATH)}")
+else:
+    print(f"❌ Le chemin {MODEL_PATH} est introuvable !")
+    print("Contenu de la racine :", os.listdir("."))
+    if os.path.exists("mlruns"):
+        print("Contenu de mlruns :", os.listdir("mlruns"))
+# ------------------------------------------------
 
 # --- CHARGEMENT DU MODÈLE ET EXPLAINER ---
 print(f"Initialisation : Chargement du modèle depuis {MODEL_PATH}...")
