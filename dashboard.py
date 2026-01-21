@@ -97,20 +97,41 @@ if btn_predict and selected_id:
         # ----------------------------------------------------------------------
         # 2. APPEL API (INFERENCE REQUEST)
         # ----------------------------------------------------------------------
-        with st.spinner('Interrogation du moteur de scoring...'):
+        # (Format MLflow Serving)
+        with st.spinner('Interrogation du modèle MLflow...'):
             try:
-                # Envoi de la requête POST à l'API
-                response = requests.post(API_URL, json={"features": clean_features})
+                # --- CHANGEMENT CLÉ ICI ---
+                # MLflow attend un format "dataframe_records"
+                # On met les features dans une liste (comme une ligne de tableau)
+                payload = {
+                    "dataframe_records": [clean_features]
+                }
                 
-                # Vérification du code statut HTTP
+                response = requests.post(API_URL, json=payload)
+                
                 if response.status_code == 200:
+                    # Le wrapper renvoie directement le JSON que nous avons défini
                     api_result = response.json()
                     
-                    # Extraction des indicateurs clés
-                    score = api_result.get('score', 0)
-                    decision = api_result.get('decision', "INCONNU")
+                    # --- Extraction des données (Attention aux listes) ---
+                    # Comme on envoie 1 client, on récupère des listes à 1 élément
+                    # On utilise [0] pour prendre la première valeur si c'est une liste
+                    
+                    score_raw = api_result.get('score', [0])
+                    score = score_raw[0] if isinstance(score_raw, list) else score_raw
+                    
+                    decision_raw = api_result.get('decision', ["Inconnu"])
+                    decision = decision_raw[0] if isinstance(decision_raw, list) else decision_raw
+                    
                     threshold = api_result.get('threshold', 0.5)
-                    shap_values = api_result.get('shap_values', {})
+                    
+                    # SHAP est déjà une liste de valeurs
+                    shap_values_raw = api_result.get('shap_values', [])
+                    # Si SHAP est une liste de listes (ex: [[val1, val2]]), on prend la première
+                    if shap_values_raw and isinstance(shap_values_raw[0], list):
+                         shap_values = dict(zip(clean_features.keys(), shap_values_raw[0]))
+                    else:
+                         shap_values = dict(zip(clean_features.keys(), shap_values_raw))
                     
                     # ----------------------------------------------------------
                     # 3. VISUALISATION : SCORE & DÉCISION
