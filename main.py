@@ -6,6 +6,7 @@ import mlflow.sklearn
 import shap  # --- P8 ADDITION : Import de SHAP
 import numpy as np
 import os
+import joblib
 
 # Initialisation de l'application FastAPI
 app = FastAPI(
@@ -15,40 +16,30 @@ app = FastAPI(
 )
 
 # --- CONFIGURATION MLOPS ---
-MODEL_PATH = "./mlruns/9/models/m-0a84d69a2e314f0e82736c01fbcdd540/artifacts"
+import joblib # <--- Assure-toi d'importer ça
 
-# --- BLOC DE DÉBOGAGE (A supprimer plus tard) ---
-print(f"Chemin actuel (CWD) : {os.getcwd()}")
-if os.path.exists(MODEL_PATH):
-    print(f"✅ Le dossier existe. Contenu : {os.listdir(MODEL_PATH)}")
-else:
-    print(f"❌ Le chemin {MODEL_PATH} est introuvable !")
-    print("Contenu de la racine :", os.listdir("."))
-    if os.path.exists("mlruns"):
-        print("Contenu de mlruns :", os.listdir("mlruns"))
-# ------------------------------------------------
+# --- CHARGEMENT DU MODÈLE ---
+# ⚠️ Attention : Ajoute "/model.pkl" à la fin de ton chemin actuel
+MODEL_FILE = "./mlruns/9/models/m-0a84d69a2e314f0e82736c01fbcdd540/artifacts/model.pkl"
 
-# --- CHARGEMENT DU MODÈLE ET EXPLAINER ---
-print(f"Initialisation : Chargement du modèle depuis {MODEL_PATH}...")
+print(f"Chargement du modèle depuis : {MODEL_FILE}")
 model = None
-explainer = None  # --- P8 ADDITION : Variable pour l'explainer
+explainer = None
 
 try:
-    model = mlflow.sklearn.load_model(MODEL_PATH)
-    print("Succès : Le modèle de scoring est chargé.")
+    # On utilise joblib directement (plus robuste que mlflow.sklearn)
+    model = joblib.load(MODEL_FILE)
+    print("Succès : Modèle chargé via Joblib.")
     
-    # --- P8 ADDITION : Initialisation de l'explainer SHAP ---
-    # On tente de créer un TreeExplainer (optimisé pour XGBoost/LGBM/RandomForest)
+    # Initialisation de SHAP
     try:
-        print("Initialisation de l'explainer SHAP...")
-        # Note : Si ton modèle est dans un Pipeline, il faudra peut-être accéder à model.named_steps['classifier']
         explainer = shap.TreeExplainer(model)
-        print("Succès : Explainer SHAP prêt.")
     except Exception as e_shap:
-        print(f"Attention : Impossible d'initier TreeExplainer ({e_shap}). L'explicabilité ne sera pas disponible.")
+        print(f"Attention SHAP : {e_shap}")
         
 except Exception as e:
-    print(f"Erreur Critique : Échec du chargement du modèle. Exception : {e}")
+    print(f"ERREUR CRITIQUE : Impossible de lire le fichier modèle.")
+    print(f"Détail : {e}")
 
 class ClientData(BaseModel):
     features: dict
