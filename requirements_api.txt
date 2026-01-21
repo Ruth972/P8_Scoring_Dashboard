@@ -11,3 +11,5 @@ joblib
 imbalanced-learn>=0.12.0
 requests
 httpx
+streamlit
+plotly
