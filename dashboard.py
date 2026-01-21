@@ -96,7 +96,6 @@ if btn_predict and selected_id:
         # ----------------------------------------------------------------------
         # 2. APPEL API (INFERENCE REQUEST)
         # ----------------------------------------------------------------------
-        # (Format MLflow Serving)
         with st.spinner('Interrogation du modèle MLflow...'):
             try:
                 # MLflow attend un format "dataframe_records"
@@ -109,46 +108,51 @@ if btn_predict and selected_id:
                 if response.status_code == 200:
                     api_result = response.json()
                     
-                    # --- 🔍 DEBUG (Visible si tu cliques dessus) ---
+                    # --- 🔍 DEBUG (Pour vérifier le format reçu) ---
                     with st.expander("🛠️ Debug Technique - Réponse brute de l'API"):
-                        st.write("Structure reçue :", api_result)
+                        st.write(api_result)
 
-                    # --- ✅ DÉBALLAGE INTELLIGENT (C'est ici qu'on corrige l'erreur) ---
-                    # 1. Si MLflow renvoie {"predictions": [...]}
+                    # --- ✅ DÉBALLAGE ROBUSTE DU JSON ---
+                    # C'est ici que l'on gère ton format spécifique {predictions: {score: [...], ...}}
+                    
                     if isinstance(api_result, dict) and "predictions" in api_result:
-                        data = api_result["predictions"][0]
-                    # 2. Si MLflow renvoie directement une liste [{...}]
+                        preds = api_result["predictions"]
+                        # CAS A : predictions est une LISTE (Format standard)
+                        if isinstance(preds, list):
+                            data = preds[0]
+                        # CAS B (TON CAS) : predictions est un DICTIONNAIRE (Format 'columnar')
+                        else:
+                            data = preds 
                     elif isinstance(api_result, list):
                         data = api_result[0]
-                    # 3. Si c'est déjà le bon dictionnaire
                     else:
                         data = api_result
 
-                    # --- Extraction sécurisée des valeurs ---
-                    # Score
+                    # --- Extraction des Valeurs (Gestion Listes vs Scalaires) ---
+                    
+                    # 1. SCORE (souvent une liste [0.03])
                     score_raw = data.get('score', [0])
-                    # Si c'est une liste (ex: [0.12]), on prend le premier élément
                     score = score_raw[0] if isinstance(score_raw, list) else score_raw
                     
-                    # Décision
+                    # 2. DÉCISION (souvent une liste ["ACCORDÉ"])
                     decision_raw = data.get('decision', ["Inconnu"])
                     decision = decision_raw[0] if isinstance(decision_raw, list) else decision_raw
                     
-                    # Seuil
-                    threshold = data.get('threshold', 0.5)
+                    # 3. SEUIL (souvent un nombre 0.067, parfois une liste)
+                    threshold_raw = data.get('threshold', 0.5)
+                    threshold = threshold_raw[0] if isinstance(threshold_raw, list) else threshold_raw
                     
-                    # SHAP Values
+                    # 4. SHAP VALUES (souvent une liste de listes [[...]])
                     shap_values_raw = data.get('shap_values', [])
                     
-                    # Reconstruction du dictionnaire SHAP {Feature: Impact}
                     if shap_values_raw:
-                        # Si SHAP est une liste de listes (ex: [[val1, val2]]), on prend la 1ère
+                        # Si c'est une liste de listes, on prend la première sous-liste
                         if isinstance(shap_values_raw[0], list):
                              raw_list = shap_values_raw[0]
                         else:
                              raw_list = shap_values_raw
                         
-                        # On associe chaque valeur à son nom de colonne
+                        # Mapping : Nom de colonne -> Impact SHAP
                         shap_values = dict(zip(clean_features.keys(), raw_list))
                     else:
                         shap_values = {}
