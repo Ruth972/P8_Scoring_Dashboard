@@ -1,0 +1,22 @@
+artifact_path: /Users/mathiasfidol/mlruns/9/models/m-b35b4257a1524730b7d409456f9b3afb/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.12.8
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+mlflow_version: 3.7.0
+model_id: m-b35b4257a1524730b7d409456f9b3afb
+model_size_bytes: 3996022
+model_uuid: m-b35b4257a1524730b7d409456f9b3afb
+prompts: null
+run_id: a02b17f60dc843b3af40692e5282f768
+utc_time_created: '2026-01-18 12:22:36.875922'

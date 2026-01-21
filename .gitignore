@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Cache des tests
+.pytest_cache/
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# MLflow (On ne versionne pas la base de données locale)
+mlflow.db
+# On garde le dossier mlruns pour que le cloud puisse charger le modèle
+# sauf si stockage du modèle ailleurs (S3). Pour l'instant, on le garde.
+donnees_expert.csv

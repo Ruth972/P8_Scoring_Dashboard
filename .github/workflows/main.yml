@@ -1,0 +1,35 @@
+name: CI/CD Pipeline
+
+# Déclencheur : À chaque push sur la branche main
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest  # On utilise une machine Linux standard
+
+    steps:
+    # 1. Récupération du code
+    - uses: actions/checkout@v3
+
+    # 2. Installation de Python 3.9
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.9"
+
+    # 3. Installation des dépendances
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgomp1  # Vital pour LightGBM
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # 4. Lancement des tests (Pytest)
+    - name: Run Unit Tests
+      run: |
+        pytest
