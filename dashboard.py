@@ -108,19 +108,14 @@ if btn_predict and selected_id:
                 if response.status_code == 200:
                     api_result = response.json()
                     
-                    # --- 🔍 DEBUG (Pour vérifier le format reçu) ---
-                    with st.expander("🛠️ Debug Technique - Réponse brute de l'API"):
-                        st.write(api_result)
-
                     # --- ✅ DÉBALLAGE ROBUSTE DU JSON ---
-                    # C'est ici que l'on gère ton format spécifique {predictions: {score: [...], ...}}
                     
                     if isinstance(api_result, dict) and "predictions" in api_result:
                         preds = api_result["predictions"]
                         # CAS A : predictions est une LISTE (Format standard)
                         if isinstance(preds, list):
                             data = preds[0]
-                        # CAS B (TON CAS) : predictions est un DICTIONNAIRE (Format 'columnar')
+                        # CAS B : predictions est un DICTIONNAIRE (Format 'columnar')
                         else:
                             data = preds 
                     elif isinstance(api_result, list):
@@ -128,21 +123,21 @@ if btn_predict and selected_id:
                     else:
                         data = api_result
 
-                    # --- Extraction des Valeurs (Gestion Listes vs Scalaires) ---
+                    # --- Extraction des Valeurs ---
                     
-                    # 1. SCORE (souvent une liste [0.03])
+                    # 1. SCORE
                     score_raw = data.get('score', [0])
                     score = score_raw[0] if isinstance(score_raw, list) else score_raw
                     
-                    # 2. DÉCISION (souvent une liste ["ACCORDÉ"])
+                    # 2. DÉCISION
                     decision_raw = data.get('decision', ["Inconnu"])
                     decision = decision_raw[0] if isinstance(decision_raw, list) else decision_raw
                     
-                    # 3. SEUIL (souvent un nombre 0.067, parfois une liste)
+                    # 3. SEUIL
                     threshold_raw = data.get('threshold', 0.5)
                     threshold = threshold_raw[0] if isinstance(threshold_raw, list) else threshold_raw
                     
-                    # 4. SHAP VALUES (souvent une liste de listes [[...]])
+                    # 4. SHAP VALUES
                     shap_values_raw = data.get('shap_values', [])
                     
                     if shap_values_raw:
