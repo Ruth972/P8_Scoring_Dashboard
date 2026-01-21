@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pandas
+scikit-learn>=1.3.0
+numpy
+lightgbm
+mlflow>=2.0.0
+pydantic>=2.0
+shap
+joblib
+imbalanced-learn>=0.12.0
+requests
+httpx
