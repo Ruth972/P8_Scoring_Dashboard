@@ -43,7 +43,7 @@ def test_sidebar_elements():
 
     # 3. Vérifier la présence du Bouton d'analyse dans la sidebar
     assert len(at.sidebar.button) == 1
-    assert "Analyser" in at.sidebar.button[0].label
+    assert "analyse" in at.sidebar.button[0].label
 
 # ==========================================================
 # TEST 4 : CHARGEMENT DES DONNÉES (TEST D'INTÉGRATION LOCAL)
