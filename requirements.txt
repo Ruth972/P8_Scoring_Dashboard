@@ -10,6 +10,7 @@ shap
 streamlit
 requests
 gunicorn
+plotly
 matplotlib
 seaborn
 joblib
