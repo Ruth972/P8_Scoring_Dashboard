@@ -9,9 +9,8 @@ import plotly.express as px
 # ==============================================================================
 
 # URL de l'endpoint de prédiction (API).
-# Remplacer par l'URL de production Render une fois le déploiement effectué.
 # Environnement Local : "http://127.0.0.1:8000/predict"
-API_URL = "https://votre-nouveau-render-p8.onrender.com/predict"
+API_URL = "https://p8-scoring-dashboard.onrender.com/predict"
 
 # Configuration de la page Streamlit
 st.set_page_config(
