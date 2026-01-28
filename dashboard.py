@@ -166,7 +166,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        # ALIGNEMENT : Ajout de margin-top pour descendre le bloc
+        # ALIGNEMENT
         color = "#2ecc71" if decision == "ACCORDÉ" else "#e74c3c"
         st.markdown(f"""
             <div style="
@@ -187,10 +187,11 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     with col2:
         # --- CALCUL DE L'AIGUILLE ---
         gauge_max = threshold * 2 
-        val_visuel = min(score, gauge_max)
+        # FIX : On utilise le même nom de variable partout (visual_score)
+        visual_score = min(score, gauge_max)
         
         # Angle
-        angle_deg = 180 - (val_visuel / gauge_max) * 180
+        angle_deg = 180 - (visual_score / gauge_max) * 180
         angle_rad = math.radians(angle_deg)
         
         # Coordonnées
@@ -203,23 +204,23 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         # A. La Jauge colorée (Fond)
         fig_gauge.add_trace(go.Indicator(
             mode="gauge+number",
-            value=visual_score,
+            value=visual_score, # Ici la variable est maintenant bien définie !
             number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
             domain={'x': [0, 1], 'y': [0, 1]},
             title={'text': "Score de Risque", 'font': {'size': 20, 'color': "gray"}},
             gauge={
-                'axis': {'range': [0, gauge_max], 'visible': False}, # Axe caché pour être épuré
-                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, # Barre invisible
+                'axis': {'range': [0, gauge_max], 'visible': False}, 
+                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, 
                 'bgcolor': "white",
                 'borderwidth': 0,
                 'steps': [
-                    {'range': [0, threshold], 'color': "#2ecc71"}, # Vert
-                    {'range': [threshold, gauge_max], 'color': "#e74c3c"} # Rouge
+                    {'range': [0, threshold], 'color': "#2ecc71"}, 
+                    {'range': [threshold, gauge_max], 'color': "#e74c3c"} 
                 ]
             }
         ))
 
-        # B. L'Aiguille Droite (ROBUSTE : type "line")
+        # B. L'Aiguille Droite
         fig_gauge.add_shape(
             type="line",
             x0=0.5, y0=0,        
@@ -236,7 +237,6 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             xref="paper", yref="paper"
         )
 
-        # D. Mise en page (Marges réduites pour remonter le graph vers le centre)
         fig_gauge.update_layout(
             height=300, 
             margin=dict(l=20, r=20, t=10, b=20),
@@ -244,7 +244,6 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
         
-        # Légende
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
     # FEATURE IMPORTANCE
