@@ -187,7 +187,6 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     with col2:
         # --- CALCUL DE L'AIGUILLE ---
         gauge_max = threshold * 2 
-        # FIX : On utilise le même nom de variable partout (visual_score)
         visual_score = min(score, gauge_max)
         
         # Angle
@@ -203,9 +202,8 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
 
         # A. La Jauge colorée (Fond)
         fig_gauge.add_trace(go.Indicator(
-            mode="gauge+number",
-            value=visual_score, # Variable corrigée
-            number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
+            mode="gauge", # MODIFICATION: On retire "+number" pour le faire manuellement
+            value=visual_score,
             domain={'x': [0, 1], 'y': [0, 1]},
             title={'text': "Score de Risque", 'font': {'size': 20, 'color': "gray"}},
             gauge={
@@ -220,7 +218,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             }
         ))
 
-        # B. L'Aiguille Droite (ROBUSTE)
+        # B. L'Aiguille Droite
         fig_gauge.add_shape(
             type="line",
             x0=0.5, y0=0,        
@@ -237,11 +235,18 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             xref="paper", yref="paper"
         )
 
-        # D. Mise en page (FIX: MARGE HAUTE AUGMENTÉE POUR LE TITRE)
+        # D. L'ANNOTATION DU SCORE (Pour qu'il soit AU-DESSUS de l'aiguille)
+        fig_gauge.add_annotation(
+            x=0.5, y=0.25, # Positionné un peu plus haut (flottant dans l'arc)
+            text=f"{visual_score:.1%}",
+            font=dict(size=40, weight="bold", color="white"), # Score en gros blanc/gris clair
+            showarrow=False,
+            xref="paper", yref="paper"
+        )
+
         fig_gauge.update_layout(
             height=300, 
-            # t=80 laisse la place pour "Score de Risque" en haut
-            margin=dict(l=20, r=20, t=80, b=20), 
+            margin=dict(l=20, r=20, t=80, b=20),
             font={'family': "Arial"}
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
