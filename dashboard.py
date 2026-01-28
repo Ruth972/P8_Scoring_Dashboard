@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
-import math  # Indispensable pour l'aiguille
+import math
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTES
@@ -161,12 +161,11 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- JAUGE AIGUILLE DROITE ---
+    # --- JAUGE GÉOMÉTRIQUE (100% ROBUSTE) ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        # ALIGNEMENT
         color = "#2ecc71" if decision == "ACCORDÉ" else "#e74c3c"
         st.markdown(f"""
             <div style="
@@ -185,73 +184,90 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # --- CALCUL DE L'AIGUILLE ---
+        # --- 1. CONFIGURATION MATHÉMATIQUE ---
         gauge_max = threshold * 2 
         visual_score = max(0, min(score, gauge_max))
         
-        # Angle
+        # Angle de l'aiguille (180=Gauche, 0=Droite)
         angle_deg = 180 - (visual_score / gauge_max) * 180
         angle_rad = math.radians(angle_deg)
         
-        # Coordonnées
-        # FIX : Rayon réduit à 0.30 pour être sûr à 100% que ça reste dedans
-        radius = 0.30
-        x_head = 0.5 + radius * math.cos(angle_rad)
-        y_head = radius * math.sin(angle_rad)
+        fig = go.Figure()
 
-        fig_gauge = go.Figure()
+        # --- 2. FONCTION POUR DESSINER LES ARCS (Vert/Rouge) ---
+        def draw_arc(start_angle, end_angle, color, name):
+            # On génère plein de points pour faire un arc lisse
+            theta = np.linspace(math.radians(start_angle), math.radians(end_angle), 50)
+            r_in, r_out = 0.6, 1.0 # Rayon intérieur et extérieur
+            
+            # Coordonnées extérieur
+            x_out = r_out * np.cos(theta)
+            y_out = r_out * np.sin(theta)
+            
+            # Coordonnées intérieur (on inverse pour fermer la boucle proprement)
+            x_in = r_in * np.cos(theta[::-1])
+            y_in = r_in * np.sin(theta[::-1])
+            
+            return go.Scatter(
+                x=np.concatenate([x_out, x_in, [x_out[0]]]),
+                y=np.concatenate([y_out, y_in, [y_out[0]]]),
+                fill='toself', mode='none', fillcolor=color, name=name, hoverinfo='skip'
+            )
 
-        # A. La Jauge colorée
-        fig_gauge.add_trace(go.Indicator(
-            mode="gauge",
-            value=visual_score,
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Score de Risque", 'font': {'size': 20, 'color': "gray"}},
-            gauge={
-                'axis': {'range': [0, gauge_max], 'visible': False}, 
-                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, 
-                'bgcolor': "white",
-                'borderwidth': 0,
-                'steps': [
-                    {'range': [0, threshold], 'color': "#2ecc71"}, 
-                    {'range': [threshold, gauge_max], 'color': "#e74c3c"} 
-                ]
-            }
+        # Ajout Zone Verte (180° à 90°)
+        fig.add_trace(draw_arc(90, 180, "#2ecc71", "Zone Verte"))
+        # Ajout Zone Rouge (90° à 0°)
+        fig.add_trace(draw_arc(0, 90, "#e74c3c", "Zone Rouge"))
+
+        # --- 3. DESSIN DE L'AIGUILLE (Ligne Scatter) ---
+        # L'aiguille est maintenant un objet géométrique dans le même repère que les arcs.
+        # Elle ne peut physiquement pas dépasser car elle utilise les mêmes unités.
+        needle_len = 0.90 # Longueur relative au rayon (0.9 = reste dans la bande couleur)
+        x_needle = [0, needle_len * math.cos(angle_rad)]
+        y_needle = [0, needle_len * math.sin(angle_rad)]
+
+        fig.add_trace(go.Scatter(
+            x=x_needle, y=y_needle, mode='lines',
+            line=dict(color='#2c3e50', width=5), hoverinfo='skip'
         ))
 
-        # B. L'Aiguille Droite (Plus courte)
-        fig_gauge.add_shape(
-            type="line",
-            x0=0.5, y0=0,        
-            x1=x_head, y1=y_head, 
-            line=dict(color="#2c3e50", width=5), # Aiguille un peu plus épaisse pour le style
-            xref="paper", yref="paper"
+        # --- 4. CENTRE ET TEXTE ---
+        # Pivot central
+        fig.add_trace(go.Scatter(
+            x=[0], y=[0], mode='markers',
+            marker=dict(color='#2c3e50', size=15), hoverinfo='skip'
+        ))
+        
+        # Texte Score (Au centre, un peu relevé)
+        fig.add_trace(go.Scatter(
+            x=[0], y=[0.25], mode='text',
+            text=[f"{visual_score:.1%}"],
+            textfont=dict(size=40, color="white", family="Arial Black"),
+            hoverinfo='skip'
+        ))
+        
+        # Titre (Au sommet)
+        fig.add_trace(go.Scatter(
+            x=[0], y=[1.15], mode='text',
+            text=["Score de Risque"],
+            textfont=dict(size=18, color="gray"),
+            hoverinfo='skip'
+        ))
+
+        # --- 5. LAYOUT BLINDÉ (Ratio Fixe) ---
+        # C'est ICI que la magie opère : scaleanchor='x' force un ratio 1:1.
+        # 1 unité en X vaudra toujours 1 unité en Y. Plus de déformation.
+        fig.update_layout(
+            xaxis=dict(range=[-1.2, 1.2], visible=False, scaleanchor='y', scaleratio=1),
+            yaxis=dict(range=[0, 1.3], visible=False),
+            margin=dict(l=20, r=20, t=20, b=20),
+            height=300,
+            showlegend=False,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
         )
         
-        # C. Le "clou" central
-        fig_gauge.add_shape(
-            type="circle",
-            x0=0.48, y0=-0.02, x1=0.52, y1=0.02,
-            fillcolor="#2c3e50", line_color="#2c3e50",
-            xref="paper", yref="paper"
-        )
-
-        # D. L'ANNOTATION DU SCORE
-        fig_gauge.add_annotation(
-            x=0.5, y=0.15, # Positionnée sous l'aiguille pour ne pas gêner
-            text=f"{visual_score:.1%}",
-            font=dict(size=40, weight="bold", color="white"),
-            showarrow=False,
-            xref="paper", yref="paper"
-        )
-
-        fig_gauge.update_layout(
-            height=300, 
-            margin=dict(l=20, r=20, t=80, b=20),
-            font={'family': "Arial"}
-        )
-        st.plotly_chart(fig_gauge, use_container_width=True)
-        
+        st.plotly_chart(fig, use_container_width=True)
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
     # FEATURE IMPORTANCE
