@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
-import math  # Indispensable pour l'aiguille
+import math
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTES
@@ -104,6 +104,7 @@ st.sidebar.info(
 )
 st.sidebar.markdown("---")
 
+# --- IMPORTANCE GLOBALE (Avec explication ajoutée) ---
 st.sidebar.subheader("🌍 Importance Globale")
 global_feat_importance = load_global_importance()
 if not global_feat_importance.empty:
@@ -114,6 +115,8 @@ if not global_feat_importance.empty:
     )
     fig_global.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0), xaxis_title=None, yaxis_title=None)
     st.sidebar.plotly_chart(fig_global, use_container_width=True)
+    # AJOUT : Caption explicative
+    st.sidebar.caption("📊 **Lecture :** Ces variables sont celles qui ont le plus de poids dans la construction du modèle mathématique global.")
 
 # ==============================================================================
 # CORPS PRINCIPAL
@@ -231,7 +234,6 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     st.caption(f"Pourquoi le client {selected_id} a eu ce score précis ?")
     
     if shap_values:
-        # On ne change PAS les noms (demande utilisateur), mais on améliore le graphique
         shap_df = pd.DataFrame(list(shap_values.items()), columns=['Feature', 'Impact'])
         shap_df['Abs_Impact'] = shap_df['Impact'].abs()
         top_shap = shap_df.sort_values(by='Abs_Impact', ascending=False).head(15)
@@ -239,7 +241,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         fig_shap = px.bar(
             top_shap.sort_values(by='Impact', ascending=True),
             x='Impact', 
-            y='Feature', # Noms d'origine conservés
+            y='Feature', 
             orientation='h', 
             color='Impact',
             color_continuous_scale=['#2ecc71', '#e74c3c'],
@@ -248,20 +250,16 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         fig_shap.update_layout(
             title="<b>Top 15 des variables contributrices</b>",
             title_font_size=18,
-            xaxis_title="Contribution au risque (Gauche = Baisse, Droite = Hausse)", # Axe clarifié
+            xaxis_title="Contribution au risque (Gauche = Baisse, Droite = Hausse)",
             yaxis_title=None,
             showlegend=False,
-            coloraxis_showscale=False, # On supprime la barre de couleur inutile à droite
+            coloraxis_showscale=False,
             height=500,
             font={'family': "Arial"}
         )
         
-        # Ligne verticale centrale pour bien séparer positif/négatif
         fig_shap.add_vline(x=0, line_width=1, line_color="white", opacity=0.5)
-        
         st.plotly_chart(fig_shap, use_container_width=True)
-        
-        # Explication UX
         st.info("💡 **Lecture :** Les barres **ROUGES** (à droite) augmentent le risque de défaut. Les barres **VERTES** (à gauche) diminuent le risque.")
 
     # UNI-VARIÉE
