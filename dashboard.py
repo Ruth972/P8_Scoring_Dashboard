@@ -246,27 +246,67 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     
     col_bi1, col_bi2 = st.columns(2)
     with col_bi1:
-        var_x = st.selectbox("Axe X :", ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH'], index=0)
+        # On renomme pour l'affichage si c'est DAYS_BIRTH
+        options_x = ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH']
+        var_x = st.selectbox("Axe X :", options_x, index=1) # Par défaut AMT_CREDIT
     with col_bi2:
-        var_y = st.selectbox("Axe Y :", ['AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH', 'EXT_SOURCE_2'], index=0)
+        options_y = ['AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH', 'EXT_SOURCE_2']
+        var_y = st.selectbox("Axe Y :", options_y, index=2) # Par défaut DAYS_BIRTH
 
     if var_x in df.columns and var_y in df.columns:
+        # --- AMÉLIORATION : Création d'un DF temporaire pour l'affichage ---
+        plot_df = df.copy()
+        
+        # Si on choisit l'âge, on le convertit en Années positives pour que ce soit lisible
+        if var_x == 'DAYS_BIRTH':
+            plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
+            plot_var_x = 'AGE_YEARS'
+        else:
+            plot_var_x = var_x
+            
+        if var_y == 'DAYS_BIRTH':
+            plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
+            plot_var_y = 'AGE_YEARS'
+        else:
+            plot_var_y = var_y
+
+        # Création du graphique avec les nouvelles variables
         fig_bi = px.scatter(
-            df, x=var_x, y=var_y, 
+            plot_df, 
+            x=plot_var_x, 
+            y=plot_var_y, 
             color_discrete_sequence=['#bdc3c7'], 
-            title=f"Croisement : {var_x} vs {var_y}",
-            opacity=0.5
+            title=f"Croisement : {plot_var_x} vs {plot_var_y}",
+            opacity=0.3  # On réduit encore l'opacité des autres points (0.5 -> 0.3)
         )
-        client_pt = client_row[[var_x, var_y]]
+        
+        # Récupération des valeurs du client (avec transformation si besoin)
+        client_val_x = client_row[var_x].values[0]
+        client_val_y = client_row[var_y].values[0]
+        
+        # Transformation pour le point client aussi
+        if var_x == 'DAYS_BIRTH': client_val_x = int(client_val_x / -365)
+        if var_y == 'DAYS_BIRTH': client_val_y = int(client_val_y / -365)
+
+        # Ajout du GROS point rouge bien visible
         fig_bi.add_trace(
             go.Scatter(
-                x=client_pt[var_x], 
-                y=client_pt[var_y], 
+                x=[client_val_x], 
+                y=[client_val_y], 
                 mode='markers',
-                marker=dict(color='red', size=15, symbol='star'),
+                marker=dict(
+                    color='red', 
+                    size=25,       # Taille augmentée (15 -> 25)
+                    symbol='star',
+                    line=dict(color='black', width=2) # Contour noir pour le contraste
+                ),
                 name='Client Sélectionné'
             )
         )
+        
+        # On force l'étoile à être au premier plan
+        fig_bi.update_layout(title_font_size=20)
+        
         st.plotly_chart(fig_bi, use_container_width=True)
 
     # --- AUDIT ---
