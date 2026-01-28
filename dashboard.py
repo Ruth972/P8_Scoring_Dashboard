@@ -187,14 +187,16 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     with col2:
         # --- CALCUL DE L'AIGUILLE ---
         gauge_max = threshold * 2 
-        visual_score = min(score, gauge_max)
+        # On sécurise pour que ça ne descende jamais sous 0 visuellement
+        visual_score = max(0, min(score, gauge_max))
         
         # Angle
         angle_deg = 180 - (visual_score / gauge_max) * 180
         angle_rad = math.radians(angle_deg)
         
         # Coordonnées
-        radius = 0.5
+        # FIX : On réduit le rayon à 0.45 pour que l'aiguille ne dépasse pas
+        radius = 0.45
         x_head = 0.5 + radius * math.cos(angle_rad)
         y_head = radius * math.sin(angle_rad)
 
@@ -202,7 +204,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
 
         # A. La Jauge colorée (Fond)
         fig_gauge.add_trace(go.Indicator(
-            mode="gauge", # MODIFICATION: On retire "+number" pour le faire manuellement
+            mode="gauge",
             value=visual_score,
             domain={'x': [0, 1], 'y': [0, 1]},
             title={'text': "Score de Risque", 'font': {'size': 20, 'color': "gray"}},
@@ -235,11 +237,11 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             xref="paper", yref="paper"
         )
 
-        # D. L'ANNOTATION DU SCORE (Pour qu'il soit AU-DESSUS de l'aiguille)
+        # D. L'ANNOTATION DU SCORE (Au-dessus de l'aiguille)
         fig_gauge.add_annotation(
-            x=0.5, y=0.25, # Positionné un peu plus haut (flottant dans l'arc)
+            x=0.5, y=0.25, 
             text=f"{visual_score:.1%}",
-            font=dict(size=40, weight="bold", color="white"), # Score en gros blanc/gris clair
+            font=dict(size=40, weight="bold", color="white"),
             showarrow=False,
             xref="paper", yref="paper"
         )
@@ -251,7 +253,6 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
         
-        # Légende
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
     # FEATURE IMPORTANCE
