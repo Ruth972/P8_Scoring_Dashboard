@@ -204,7 +204,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         # A. La Jauge colorée (Fond)
         fig_gauge.add_trace(go.Indicator(
             mode="gauge+number",
-            value=visual_score, # Ici la variable est maintenant bien définie !
+            value=visual_score, # Variable corrigée
             number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
             domain={'x': [0, 1], 'y': [0, 1]},
             title={'text': "Score de Risque", 'font': {'size': 20, 'color': "gray"}},
@@ -220,7 +220,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             }
         ))
 
-        # B. L'Aiguille Droite
+        # B. L'Aiguille Droite (ROBUSTE)
         fig_gauge.add_shape(
             type="line",
             x0=0.5, y0=0,        
@@ -237,13 +237,16 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             xref="paper", yref="paper"
         )
 
+        # D. Mise en page (FIX: MARGE HAUTE AUGMENTÉE POUR LE TITRE)
         fig_gauge.update_layout(
             height=300, 
-            margin=dict(l=20, r=20, t=10, b=20),
+            # t=80 laisse la place pour "Score de Risque" en haut
+            margin=dict(l=20, r=20, t=80, b=20), 
             font={'family': "Arial"}
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
         
+        # Légende
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
     # FEATURE IMPORTANCE
