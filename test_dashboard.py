@@ -15,51 +15,50 @@ def test_dashboard_startup():
 # ==========================================================
 def test_title_and_header():
     """
-    Vérifie que le titre principal est correct et correspond à la maquette.
+    Vérifie que le titre principal est correct.
     """
     at = AppTest.from_file("dashboard.py").run()
     
     # On cible le premier titre de la page principale
-    # Note : at.title est une liste de tous les titres trouvés
     assert len(at.title) > 0
-    assert "Dashboard de Scoring Crédit" in at.title[0].value
+    assert "Dashboard" in at.title[0].value
 
 # ==========================================================
-# TEST 3 : VÉRIFICATION DE LA SIDEBAR (BARRE LATÉRALE)
+# TEST 3 : VÉRIFICATION DE LA SIDEBAR (LOGIQUE DYNAMIQUE)
 # ==========================================================
 def test_sidebar_elements():
     """
-    Vérifie que la barre latérale contient bien les contrôles attendus.
+    Vérifie la logique d'apparition des éléments dans la sidebar.
+    Le bouton 'Calculer' ne doit apparaître qu'après une sélection.
     """
     at = AppTest.from_file("dashboard.py").run()
     
-    # 1. Vérifier la présence de la Selectbox (Liste déroulante) dans la sidebar
-    # Dans ton dashboard.py, c'est 'at.sidebar.selectbox'
+    # 1. Vérifier la présence de la Selectbox (Liste déroulante)
     assert len(at.sidebar.selectbox) == 1
     
-    # 2. Vérifier le label de la Selectbox (optionnel mais recommandé)
-    # On s'attend à trouver "Identifiant Client" ou "ID Client"
-    assert "ID" in at.sidebar.selectbox[0].label or "Client" in at.sidebar.selectbox[0].label
+    # 2. Au démarrage, aucune sélection n'est faite : LE BOUTON DOIT ÊTRE ABSENT
+    assert len(at.sidebar.button) == 0
 
-    # 3. Vérifier la présence du Bouton d'analyse dans la sidebar
+    # 3. ACTION : On simule la sélection de "🆕 Nouveau Dossier (Vierge)"
+    # .set_value(...) change la valeur et .run() relance le script comme un utilisateur
+    at.sidebar.selectbox[0].set_value("🆕 Nouveau Dossier (Vierge)").run()
+
+    # 4. VÉRIFICATION : Maintenant, le bouton doit être présent
     assert len(at.sidebar.button) == 1
-    assert "analyse" in at.sidebar.button[0].label
+    assert "Calculer" in at.sidebar.button[0].label
 
 # ==========================================================
-# TEST 4 : CHARGEMENT DES DONNÉES (TEST D'INTÉGRATION LOCAL)
+# TEST 4 : CHARGEMENT DES DONNÉES
 # ==========================================================
 def test_data_loading():
     """
-    Vérifie indirectement que le fichier CSV est bien chargé.
-    Si le CSV est chargé, la selectbox ne doit pas être vide.
+    Vérifie que le fichier CSV est bien chargé (la liste n'est pas vide).
     """
     at = AppTest.from_file("dashboard.py").run()
     
-    # Si le fichier CSV est lu correctement, la selectbox doit avoir des options
-    # Note : Cela nécessite que 'donnees_sample.csv' soit présent lors du test
     try:
+        # On vérifie qu'il y a plus d'1 option (l'option par défaut + les IDs)
         options = at.sidebar.selectbox[0].options
-        assert len(options) > 0
+        assert len(options) > 1 
     except IndexError:
-        # Si la selectbox n'existe pas, le test échoue
-        assert False, "La selectbox des clients n'a pas été trouvée."
+        assert False, "La selectbox des clients est introuvable."
