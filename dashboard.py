@@ -186,42 +186,56 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-                        # --- GRAPHIQUE CUSTOM : JAUGE SEMI-CIRCULAIRE (SPEEDOMETER) ---
+                        # --- GRAPHIQUE CUSTOM : JAUGE AVEC BRIQUE JAUNE ---
                         fig_gauge = go.Figure(go.Indicator(
-                            mode="gauge+number", # Jauge + Score affiché au centre
+                            mode="gauge+number",
                             value=score,
-                            number={'suffix': "", 'font': {'size': 40}}, # Score en gros
+                            # Format du score central en gros pourcentage
+                            number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 40, 'weight': 'bold'}},
                             domain={'x': [0, 1], 'y': [0, 1]},
-                            title={'text': "Score de Risque", 'font': {'size': 20}},
+                            title={'text': "Position du client face au risque", 'font': {'size': 20}},
                             gauge={
-                                'axis': {'range': [0, 1], 'tickwidth': 1, 'tickcolor': "darkblue"},
-                                'bar': {'color': "black"}, # L'aiguille/barre de progression
+                                'shape': 'angular', # Forme demi-cercle
+                                'axis': {'range': [0, 1], 'tickwidth': 2, 'tickcolor': "black", 'tickformat': '.0%'},
+                                'bar': {'color': "black", 'thickness': 0.3}, # L'aiguille noire
                                 'bgcolor': "white",
                                 'borderwidth': 2,
-                                'bordercolor': "gray",
+                                'bordercolor': "#bdc3c7",
                                 'steps': [
-                                    # Zone VERTE (de 0 au seuil)
-                                    {'range': [0, threshold], 'color': "#2ecc71"},
-                                    # Zone ROUGE (du seuil à 1)
-                                    {'range': [threshold, 1], 'color': "#e74c3c"}
+                                    # Zone VERTE (Acceptation) : de 0 jusqu'au seuil
+                                    {'range': [0, threshold], 'color': "#27ae60"}, 
+                                    # Zone ROUGE (Refus) : du seuil jusqu'à 100%
+                                    {'range': [threshold, 1], 'color': "#c0392b"}
                                 ],
+                                # --- LA "BRIQUE" JAUNE (Le Seuil) ---
                                 'threshold': {
-                                    'line': {'color': "red", 'width': 4},
-                                    'thickness': 0.75,
-                                    'value': threshold
+                                    # On fait une ligne TRÈS épaisse (width: 20) pour faire un "bloc"
+                                    'line': {'color': "#f1c40f", 'width': 20}, 
+                                    'thickness': 1.0, # Prend toute la hauteur de la barre
+                                    'value': threshold # Positionnée exactement au seuil
                                 }
                             }
                         ))
                         
-                        # Mise en page pour garantir que rien n'est coupé
+                        # Ajustement des marges pour le titre
                         fig_gauge.update_layout(
-                            height=300, 
-                            margin=dict(l=20, r=20, t=50, b=20), # Marges suffisantes pour le titre
+                            height=350, 
+                            margin=dict(l=30, r=30, t=80, b=30),
                             font={'family': "Arial"}
                         )
                         
                         st.plotly_chart(fig_gauge, use_container_width=True)
 
+    # --- LÉGENDE DES COULEURS ---
+                    st.markdown("""
+                        <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #dee2e6; font-size: 0.9em; text-align: center;">
+                            <strong>Légende de la jauge :</strong><br>
+                            <span style='color: #27ae60;'>■</span> <strong>Zone Verte</strong> : Score faible, risque acceptable (Crédit Accordé).<br>
+                            <span style='color: #f1c40f; font-size: 1.2em;'>■</span> <strong>Brique Jaune</strong> : Seuil critique. C'est la frontière exacte de décision.<br>
+                            <span style='color: #c0392b;'>■</span> <strong>Zone Rouge</strong> : Score élevé, risque trop important (Crédit Refusé).
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
     # --- 3. FEATURE IMPORTANCE LOCALE ---
     st.markdown("---")
     st.subheader("2️⃣ Interprétabilité : Facteurs d'influence (Local)")
