@@ -171,7 +171,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- 2. VISUALISATION SCORE (SPEEDOMETER NORMALISÉ) ---
+    # --- 2. VISUALISATION SCORE (SPEEDOMETER OPTIMISÉ) ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -186,53 +186,46 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # --- LOGIQUE DE NORMALISATION ---
-        # Pour que le seuil soit visuellement au "Milieu" (12h00) du demi-cercle,
-        # on définit le Maximum de la jauge à exactement 2 fois le seuil.
-        # Ex: Si seuil = 7%, le Max sera 14%.
-        # Ainsi 7% est à 50% de la jauge.
+        # --- LOGIQUE DE NORMALISATION (Zoom autour du seuil) ---
         gauge_max = threshold * 2
-        
-        # Si le score du client explose ce maximum (ex: 50%), on le cape visuellement au max
-        # pour que l'aiguille aille à fond à droite sans casser l'échelle.
         visual_score = min(score, gauge_max)
 
-        # --- GRAPHIQUE JAUGE "SPEEDOMETER" ---
+        # --- GRAPHIQUE JAUGE "SPEEDOMETER" AVEC AIGUILLE FINE ---
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
             value=visual_score,
             number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
             domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Niveau de Risque Normalisé", 'font': {'size': 18}},
+            # MODIFICATION TITRE : Retrait de "Normalisé"
+            title={'text': "Niveau de Risque", 'font': {'size': 18}},
             gauge={
                 'shape': 'angular', # Demi-cercle
                 'axis': {
-                    'range': [0, gauge_max], # Échelle zoomée autour du seuil
-                    'tickformat': '.1%',     # Affichage en %
+                    'range': [0, gauge_max],
+                    'tickformat': '.1%',
                     'tickmode': 'array',
-                    'tickvals': [0, threshold, gauge_max], # Ticks: 0, Seuil, Max
-                    'ticktext': ['0%', 'SEUIL', 'Max'],    # Texte explicite
-                    'tickwidth': 2
+                    'tickvals': [0, threshold, gauge_max],
+                    'ticktext': ['0%', 'SEUIL', 'Max'],
+                    'tickwidth': 2,
+                    'tickcolor': "darkblue"
                 },
-                'bar': {'color': "black", 'thickness': 0.25}, # Aiguille noire classique
+                # MODIFICATION AIGUILLE : Très fine (0.03) et bleu foncé
+                'bar': {'color': "darkblue", 'thickness': 0.03}, 
                 'bgcolor': "white",
                 'borderwidth': 2,
                 'bordercolor': "#bdc3c7",
                 'steps': [
-                    # On reproduit le dégradé de ton image : Vert -> Jaune -> Orange -> Rouge
-                    # 1. Vert (Sûr) : De 0 à 80% du seuil
+                    # Dégradé 4 couleurs (Vert -> Jaune -> Orange -> Rouge)
                     {'range': [0, threshold * 0.8], 'color': "#2ecc71"}, 
-                    # 2. Jaune (Attention) : De 80% à 100% du seuil (Approche du seuil)
                     {'range': [threshold * 0.8, threshold], 'color': "#f1c40f"},
-                    # 3. Orange (Danger immédiat) : De 100% à 120% du seuil
                     {'range': [threshold, threshold * 1.2], 'color': "#e67e22"},
-                    # 4. Rouge (Refus net) : Le reste
                     {'range': [threshold * 1.2, gauge_max], 'color': "#e74c3c"}
                 ],
                 'threshold': {
-                    'line': {'color': "black", 'width': 4},
+                    # Ligne de seuil noire pour le contraste
+                    'line': {'color': "black", 'width': 3},
                     'thickness': 1.0,
-                    'value': threshold # Une ligne noire marque le seuil exact
+                    'value': threshold
                 }
             }
         ))
@@ -245,7 +238,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         st.plotly_chart(fig_gauge, use_container_width=True)
 
         # Légende explicative
-        st.caption(f"ℹ️ Échelle normalisée : Le seuil critique ({threshold:.1%}) est placé au centre.")
+        st.caption(f"ℹ️ L'échelle est zoomée pour placer le seuil critique ({threshold:.1%}) au centre du cadran.")
 
     # --- 3. FEATURE IMPORTANCE LOCALE ---
     st.markdown("---")
