@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# GESTION DE LA SESSION (MÉMOIRE)
+# GESTION DE LA SESSION
 # ==============================================================================
 if 'api_data' not in st.session_state:
     st.session_state.api_data = None
@@ -41,7 +41,6 @@ def load_data():
 
 df = load_data()
 
-# --- Feature Importance Globale (Chargement CSV) ---
 @st.cache_data
 def load_global_importance():
     try:
@@ -49,7 +48,6 @@ def load_global_importance():
     except FileNotFoundError:
         return pd.DataFrame()
 
-# --- Simulation infos client ---
 def get_client_info(client_id):
     np.random.seed(int(client_id)) 
     noms = ["Martin", "Bernard", "Thomas", "Petit", "Robert", "Richard", "Durand", "Dubois"]
@@ -73,11 +71,9 @@ if not df.empty:
     id_list = df['SK_ID_CURR'].unique()
     selected_id = st.sidebar.selectbox("Identifiant Client (ID)", id_list)
     
-    # Bouton d'action
     if st.sidebar.button("📊 Lancer l'analyse de risque"):
         st.session_state.current_client_id = selected_id
         
-        # --- APPEL API ---
         client_row = df[df['SK_ID_CURR'] == selected_id]
         if not client_row.empty:
             cols_excluded = ['TARGET', 'SK_ID_CURR', 'index', 'Unnamed: 0']
@@ -101,15 +97,12 @@ else:
     st.sidebar.warning("Données indisponibles.")
 
 st.sidebar.markdown("---")
-
-# --- LE RETOUR DE L'ENCART D'INFORMATION (DISCLAIMER) ---
 st.sidebar.info(
     "**Note :** Ce dashboard est une interface d'aide à la décision. "
     "Les scores sont générés par un modèle de Machine Learning via API."
 )
 st.sidebar.markdown("---")
 
-# Importance Globale
 st.sidebar.subheader("🌍 Importance Globale")
 global_feat_importance = load_global_importance()
 if not global_feat_importance.empty:
@@ -132,7 +125,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     api_result = st.session_state.api_data
     clean_features = api_result.get('clean_features', {})
     
-    # --- 1. INFOS CLIENT ---
+    # INFOS CLIENT
     client_row = df[df['SK_ID_CURR'] == selected_id]
     infos = get_client_info(selected_id)
     
@@ -145,7 +138,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         col_info4.metric("Revenu Annuel", f"{client_row['AMT_INCOME_TOTAL'].values[0]:,.0f} $")
         st.markdown("---")
 
-    # --- DÉBALLAGE JSON ---
+    # DÉBALLAGE JSON
     if isinstance(api_result, dict) and "predictions" in api_result:
         preds = api_result["predictions"]
         data = preds[0] if isinstance(preds, list) else preds
@@ -154,16 +147,12 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         data = api_result
 
-    # Extraction
     score_raw = data.get('score', [0])
     score = score_raw[0] if isinstance(score_raw, list) else score_raw
-    
     decision_raw = data.get('decision', ["Inconnu"])
     decision = decision_raw[0] if isinstance(decision_raw, list) else decision_raw
-    
     threshold_raw = data.get('threshold', 0.5)
     threshold = threshold_raw[0] if isinstance(threshold_raw, list) else threshold_raw
-    
     shap_values_raw = data.get('shap_values', [])
     if shap_values_raw:
         raw_list = shap_values_raw[0] if isinstance(shap_values_raw[0], list) else shap_values_raw
@@ -171,7 +160,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- 2. VISUALISATION SCORE (SPEEDOMETER OPTIMISÉ) ---
+    # --- JAUGE STYLE "SPEEDOMETER" AVEC SEUIL AU MILIEU ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -186,45 +175,45 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # --- LOGIQUE DE NORMALISATION (Zoom autour du seuil) ---
+        # ASTUCE VISUELLE :
+        # Pour que le seuil soit à la verticale (midi), on fixe le max de la jauge à 2x le seuil.
+        # Ex: Si seuil = 7%, le Max est 14%. Donc 7% est pile au milieu.
         gauge_max = threshold * 2
         visual_score = min(score, gauge_max)
 
-        # --- GRAPHIQUE JAUGE "SPEEDOMETER" AVEC AIGUILLE FINE ---
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
             value=visual_score,
             number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
             domain={'x': [0, 1], 'y': [0, 1]},
-            # MODIFICATION TITRE : Retrait de "Normalisé"
-            title={'text': "Niveau de Risque", 'font': {'size': 18}},
+            title={'text': "Score de Risque", 'font': {'size': 20}},
             gauge={
-                'shape': 'angular', # Demi-cercle
+                'shape': 'angular', 
                 'axis': {
                     'range': [0, gauge_max],
-                    'tickformat': '.1%',
+                    'tickformat': '.0%',
                     'tickmode': 'array',
-                    'tickvals': [0, threshold, gauge_max],
-                    'ticktext': ['0%', 'SEUIL', 'Max'],
+                    'tickvals': [0, threshold, gauge_max], # On affiche 0, le Seuil (au milieu) et le Max
+                    'ticktext': ['0%', 'SEUIL CRITIQUE', 'Max'],
                     'tickwidth': 2,
-                    'tickcolor': "darkblue"
+                    'tickcolor': "black"
                 },
-                # MODIFICATION AIGUILLE : Très fine (0.03) et bleu foncé
-                'bar': {'color': "darkblue", 'thickness': 0.03}, 
+                # L'AIGUILLE (NOIRE, CLASSIQUE)
+                'bar': {'color': "black", 'thickness': 0.02}, 
                 'bgcolor': "white",
                 'borderwidth': 2,
                 'bordercolor': "#bdc3c7",
                 'steps': [
-                    # Dégradé 4 couleurs (Vert -> Jaune -> Orange -> Rouge)
-                    {'range': [0, threshold * 0.8], 'color': "#2ecc71"}, 
-                    {'range': [threshold * 0.8, threshold], 'color': "#f1c40f"},
-                    {'range': [threshold, threshold * 1.2], 'color': "#e67e22"},
-                    {'range': [threshold * 1.2, gauge_max], 'color': "#e74c3c"}
+                    # Reproduction du dégradé de ton image
+                    {'range': [0, threshold * 0.8], 'color': "#2ecc71"}, # Vert
+                    {'range': [threshold * 0.8, threshold], 'color': "#f1c40f"}, # Jaune
+                    {'range': [threshold, threshold * 1.2], 'color': "#e67e22"}, # Orange
+                    {'range': [threshold * 1.2, gauge_max], 'color': "#e74c3c"}  # Rouge
                 ],
+                # PAS DE BARRE NOIRE STATIQUE ICI (Comme demandé)
                 'threshold': {
-                    # Ligne de seuil noire pour le contraste
-                    'line': {'color': "black", 'width': 3},
-                    'thickness': 1.0,
+                    'line': {'color': "black", 'width': 0}, # Invisible, on se fie à la position verticale
+                    'thickness': 0,
                     'value': threshold
                 }
             }
@@ -237,10 +226,10 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
 
-        # Légende explicative
-        st.caption(f"ℹ️ L'échelle est zoomée pour placer le seuil critique ({threshold:.1%}) au centre du cadran.")
+        # Petite légende pour que l'utilisateur comprenne
+        st.caption(f"ℹ️ Le cadran est calibré pour que le seuil critique ({threshold:.1%}) soit exactement au sommet (position verticale).")
 
-    # --- 3. FEATURE IMPORTANCE LOCALE ---
+    # FEATURE IMPORTANCE
     st.markdown("---")
     st.subheader("2️⃣ Interprétabilité : Facteurs d'influence (Local)")
     st.caption(f"Pourquoi le client {selected_id} a eu ce score précis ?")
@@ -258,7 +247,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         )
         st.plotly_chart(fig_shap, use_container_width=True)
 
-    # --- 4. ANALYSE UNI-VARIÉE ---
+    # UNI-VARIÉE
     st.markdown("---")
     st.subheader("3️⃣ Comparaison Uni-variée")
     st.caption(f"Où se situe le client {selected_id} par rapport à l'ensemble de la population ?")
@@ -275,7 +264,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Client", annotation_position="top right")
         st.plotly_chart(fig_dist, use_container_width=True)
     
-    # --- 5. ANALYSE BI-VARIÉE ---
+    # BI-VARIÉE
     st.markdown("---")
     st.subheader("4️⃣ Comparaison Bi-variée (Croisement)")
     st.caption(f"Le profil du client {selected_id} est-il atypique selon ces deux critères combinés ?")
@@ -289,10 +278,8 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         var_y = st.selectbox("Axe Y :", options_y, index=2)
 
     if var_x in df.columns and var_y in df.columns:
-        # Création du DF temporaire
         plot_df = df.copy()
         
-        # Conversion Age
         if var_x == 'DAYS_BIRTH':
             plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
             plot_var_x = 'AGE_YEARS'
@@ -305,52 +292,27 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         else:
             plot_var_y = var_y
         
-        # Valeurs du client
         client_val_x = client_row[var_x].values[0]
         client_val_y = client_row[var_y].values[0]
         if var_x == 'DAYS_BIRTH': client_val_x = int(client_val_x / -365)
         if var_y == 'DAYS_BIRTH': client_val_y = int(client_val_y / -365)
 
-        # --- CONSTRUCTION MANUELLE (go.Figure) ---
         fig_bi = go.Figure()
-
-        # 1. Le FOND (Points gris) - Dessiné en PREMIER
         fig_bi.add_trace(go.Scatter(
-            x=plot_df[plot_var_x],
-            y=plot_df[plot_var_y],
+            x=plot_df[plot_var_x], y=plot_df[plot_var_y],
             mode='markers',
-            marker=dict(
-                color='#bdc3c7', 
-                size=5, 
-                opacity=0.3 # Transparence
-            ),
+            marker=dict(color='#bdc3c7', size=5, opacity=0.3),
             name='Population'
         ))
-
-        # 2. Le CLIENT (L'étoile) - Dessiné en DERNIER (donc au-dessus)
         fig_bi.add_trace(go.Scatter(
-            x=[client_val_x], 
-            y=[client_val_y], 
+            x=[client_val_x], y=[client_val_y], 
             mode='markers',
-            marker=dict(
-                color='red', 
-                size=15,       # Taille standard demandée
-                symbol='star',
-                opacity=1.0    # Rouge pur (pas de mélange)
-            ),
+            marker=dict(color='red', size=15, symbol='star', opacity=1.0),
             name='Client Sélectionné'
         ))
-        
-        fig_bi.update_layout(
-            title=f"Croisement : {plot_var_x} vs {plot_var_y}",
-            title_font_size=20,
-            xaxis_title=plot_var_x,
-            yaxis_title=plot_var_y
-        )
-        
+        fig_bi.update_layout(title=f"Croisement : {plot_var_x} vs {plot_var_y}", title_font_size=20, xaxis_title=plot_var_x, yaxis_title=plot_var_y)
         st.plotly_chart(fig_bi, use_container_width=True)
 
-    # --- AUDIT ---
     with st.expander("🔎 Audit des données"):
         st.json(clean_features)
 
