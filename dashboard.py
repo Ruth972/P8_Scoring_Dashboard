@@ -186,38 +186,70 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # Configuration Bullet Chart Horizontal
-        visual_max = threshold * 2 if threshold > 0 else 1.0
-        
-        fig_gauge = go.Figure(go.Indicator(
-            mode="number+gauge",
-            value=score,
-            number={'valueformat': '.1%'},
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Position par rapport au seuil de risque", 'font': {'size': 18}},
-            gauge={
-                'shape': "bullet",
-                'axis': {
-                    'range': [0, visual_max],
-                    'tickformat': '.0%',
-                    'tickmode': 'array',
-                    'tickvals': [0, threshold, visual_max],
-                },
-                'bar': {'color': "black", 'thickness': 0.25},
-                'bgcolor': "#e74c3c", # Fond Rouge (Risque)
-                'steps': [
-                    {'range': [0, threshold], 'color': "#2ecc71"}, # Étape Verte (Sûre)
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': threshold
-                }
-            }
-        ))
-        fig_gauge.update_layout(height=250, margin=dict(l=20, r=30, t=60, b=20), font={'family': "Arial"})
-        st.plotly_chart(fig_gauge, use_container_width=True)
+                        # --- GRAPHIQUE CUSTOM : SCALE BAR (Curseur) ---
+                        
+                        # 1. Définition des bornes (0 à 2x le seuil pour centrer)
+                        # On s'assure que le max couvre au moins le score du client
+                        visual_max = max(threshold * 2, score * 1.1) if threshold > 0 else 1.0
+                        
+                        fig_gauge = go.Figure()
 
+                        # 2. Les Zones de Couleur (Fond)
+                        # Zone Verte (0 -> Seuil)
+                        fig_gauge.add_shape(
+                            type="rect", x0=0, x1=threshold, y0=0, y1=1,
+                            fillcolor="#2ecc71", line_width=0, layer="below"
+                        )
+                        # Zone Rouge (Seuil -> Max)
+                        fig_gauge.add_shape(
+                            type="rect", x0=threshold, x1=visual_max, y0=0, y1=1,
+                            fillcolor="#e74c3c", line_width=0, layer="below"
+                        )
+
+                        # 3. La Ligne de Seuil (Rouge - Fixe)
+                        fig_gauge.add_shape(
+                            type="line", x0=threshold, x1=threshold, y0=0, y1=1,
+                            line=dict(color="red", width=4, dash="dot")
+                        )
+
+                        # 4. Le CURSEUR CLIENT (Barre Verticale Noire - Mobile)
+                        fig_gauge.add_trace(go.Scatter(
+                            x=[score], 
+                            y=[0.5], # Au milieu de la hauteur
+                            mode='markers+text',
+                            marker=dict(
+                                symbol='line-ns', # Forme "Ligne Nord-Sud" (Verticale)
+                                size=50,          # Hauteur de la barre
+                                color='black',
+                                line=dict(width=5) # Épaisseur de la barre
+                            ),
+                            # On affiche le pourcentage en gros juste au-dessus du curseur
+                            text=[f"{score:.1%}"], 
+                            textposition="top center",
+                            textfont=dict(size=25, color="black", family="Arial Black"),
+                            name='Score Client',
+                            hoverinfo='text'
+                        ))
+
+                        # 5. Mise en page propre
+                        fig_gauge.update_layout(
+                            title={'text': "Score de Risque", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'},
+                            title_font_size=20,
+                            height=200,
+                            margin=dict(l=20, r=20, t=50, b=20), # Marges suffisantes pour le titre
+                            xaxis=dict(
+                                range=[0, visual_max],
+                                tickformat='.0%',
+                                tickvals=[0, threshold, visual_max], # On affiche 0%, le Seuil et le Max
+                                showgrid=False,
+                                zeroline=False
+                            ),
+                            yaxis=dict(visible=False, range=[0, 1]), # On cache l'axe Y
+                            showlegend=False
+                        )
+                        
+                        st.plotly_chart(fig_gauge, use_container_width=True)
+                        
     # --- 3. FEATURE IMPORTANCE LOCALE ---
     st.markdown("---")
     st.subheader("2️⃣ Interprétabilité : Facteurs d'influence (Local)")
