@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
-import math
+import math  # Indispensable pour l'aiguille
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTES
@@ -26,6 +26,8 @@ if 'api_data' not in st.session_state:
     st.session_state.api_data = None
 if 'current_client_id' not in st.session_state:
     st.session_state.current_client_id = None
+if 'is_simulation' not in st.session_state:
+    st.session_state.is_simulation = False
 
 # ==============================================================================
 # GESTION DES DONNÉES
@@ -49,14 +51,15 @@ def load_global_importance():
     except FileNotFoundError:
         return pd.DataFrame()
 
-def get_client_info(client_id, modified_income=None):
-    # Simulation d'infos civiles (non utilisées par le modèle)
+def get_client_info(client_id):
+    # Gestion du cas "Nouveau Dossier"
     if client_id == "Nouveau Dossier":
         return {
             "Nom": "Nouveau", "Prénom": "Client", 
             "Ville": "Inconnue", "Email": "nouveau@client.com"
         }
     
+    # Génération d'infos fictives pour la démo
     np.random.seed(int(client_id)) 
     noms = ["Martin", "Bernard", "Thomas", "Petit", "Robert", "Richard", "Durand", "Dubois"]
     prenoms = ["Jean", "Marie", "Michel", "Pierre", "Paul", "Jacques", "Sophie", "Julie"]
@@ -65,6 +68,7 @@ def get_client_info(client_id, modified_income=None):
         "Nom": np.random.choice(noms),
         "Prénom": np.random.choice(prenoms),
         "Ville": np.random.choice(villes),
+        "Adresse": f"{np.random.randint(1, 150)} rue de la République",
         "Email": f"client.{client_id}@email.com"
     }
 
@@ -75,34 +79,32 @@ def get_client_info(client_id, modified_income=None):
 st.sidebar.header("🔍 Dossier & Simulation")
 
 if not df.empty:
-    # Liste des ID + Option "Nouveau Dossier"
+    # Liste des ID + Option Nouveau Dossier
     id_list = df['SK_ID_CURR'].unique().tolist()
     id_options = ["Sélectionner un ID..."] + id_list + ["🆕 Nouveau Dossier (Vierge)"]
     
     selected_option = st.sidebar.selectbox("Identifiant Client", id_options)
     
-    # Dictionnaire pour stocker les valeurs modifiées
     input_data = {}
     
     if selected_option != "Sélectionner un ID...":
         
-        # 1. RÉCUPÉRATION DES DONNÉES DE BASE
+        # 1. Chargement des données de base
         if selected_option == "🆕 Nouveau Dossier (Vierge)":
-            # On prend la moyenne des données comme base pour un nouveau dossier
+            # On prend la moyenne du dataset pour pré-remplir
             base_data = df.mean(numeric_only=True).to_dict()
-            st.sidebar.warning("Mode Création : Les valeurs par défaut sont les moyennes du marché.")
+            st.sidebar.warning("Mode Création : Valeurs par défaut (Moyennes).")
             current_id = "Nouveau Dossier"
         else:
-            # On prend les données réelles du client
             current_id = selected_option
             base_data = df[df['SK_ID_CURR'] == current_id].iloc[0].to_dict()
 
-        # 2. FORMULAIRE DE MODIFICATION (Les Top Features)
+        # 2. Formulaire de Modification (Simulation)
         st.sidebar.markdown("---")
         st.sidebar.subheader("✏️ Modifier les informations")
+        
         with st.sidebar.expander("Paramètres du dossier", expanded=True):
-            # On définit les variables clés qu'on veut laisser modifier
-            # (Nom technique, Label lisible, Step)
+            # Liste des variables modifiables
             key_features = [
                 ('AMT_INCOME_TOTAL', 'Revenus Annuels ($)', 1000.0),
                 ('AMT_CREDIT', 'Montant du Crédit ($)', 5000.0),
@@ -115,14 +117,11 @@ if not df.empty:
                 ('AMT_GOODS_PRICE', 'Prix du bien ($)', 5000.0)
             ]
             
-            # Génération des inputs
+            # Génération des champs
             for col, label, step_val in key_features:
                 if col in base_data:
                     val = base_data[col]
-                    # Gestion des NaN
                     if pd.isna(val): val = 0.0
-                    
-                    # Input interactif
                     input_data[col] = st.number_input(
                         label, 
                         value=float(val), 
@@ -130,35 +129,36 @@ if not df.empty:
                         format="%.2f"
                     )
         
-        # 3. BOUTON D'ACTION
+        # 3. Bouton de calcul
         if st.sidebar.button("🚀 Calculer le Score (Rafraîchir)"):
             st.session_state.current_client_id = current_id
             
-            # Fusion : On prend toutes les données de base, et on écrase avec les inputs modifiés
-            # Cela permet d'envoyer un vecteur complet à l'API (avec les 100+ autres colonnes inchangées)
+            # Fusion : Base + Modifications manuelles
             final_features = base_data.copy()
             final_features.update(input_data)
             
-            # Nettoyage technique (NaN -> 0, exclusion colonnes inutiles)
+            # Nettoyage
             cols_excluded = ['TARGET', 'SK_ID_CURR', 'index', 'Unnamed: 0']
             clean_features = {k: (0 if pd.isna(v) else v) for k, v in final_features.items() if k not in cols_excluded}
             
-            with st.spinner('Analyse du profil modifié en cours...'):
+            with st.spinner('Analyse du profil en cours...'):
                 try:
                     payload = {"dataframe_records": [clean_features]}
                     response = requests.post(API_URL, json=payload)
                     if response.status_code == 200:
                         st.session_state.api_data = response.json()
                         st.session_state.api_data['clean_features'] = clean_features 
-                        st.session_state.is_simulation = (input_data != {k: base_data[k] for k in input_data if k in base_data})
+                        st.session_state.is_simulation = True
                     else:
                         st.error(f"Erreur API : {response.status_code}")
+                        st.session_state.api_data = None
                 except Exception as e:
                     st.error(f"Erreur technique : {e}")
-
+                    st.session_state.api_data = None
 else:
     st.sidebar.warning("Données indisponibles.")
 
+# --- Importance Globale Sidebar ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("🌍 Importance Globale")
 global_feat_importance = load_global_importance()
@@ -184,20 +184,20 @@ if st.session_state.api_data:
     clean_features = api_result.get('clean_features', {})
     current_id = st.session_state.current_client_id
     
-    # INFOS CLIENT (Dynamiques selon les inputs)
     infos = get_client_info(current_id)
     
+    # --- FICHE CLIENT ---
     with st.container():
-        # Petit badge si c'est une simulation
+        # Alerte Simulation
         if getattr(st.session_state, 'is_simulation', False) or current_id == "Nouveau Dossier":
             st.warning("⚠️ **Mode Simulation actif :** Les résultats affichés sont basés sur les données modifiées dans la barre latérale.")
-        
-        st.markdown("### 👤 Fiche Client (Données utilisées)")
+            
+        st.markdown("### 👤 Fiche Client")
         col_info1, col_info2, col_info3, col_info4 = st.columns(4)
         col_info1.metric("Nom", f"{infos['Nom']} {infos['Prénom']}")
         col_info2.metric("ID Dossier", str(current_id))
-        col_info3.metric("Revenu Annuel (Simulé)", f"{clean_features.get('AMT_INCOME_TOTAL', 0):,.0f} $")
-        col_info4.metric("Montant Crédit (Simulé)", f"{clean_features.get('AMT_CREDIT', 0):,.0f} $")
+        col_info3.metric("Revenu Annuel", f"{clean_features.get('AMT_INCOME_TOTAL', 0):,.0f} $")
+        col_info4.metric("Montant Crédit", f"{clean_features.get('AMT_CREDIT', 0):,.0f} $")
         st.markdown("---")
 
     # DÉBALLAGE JSON
@@ -222,7 +222,7 @@ if st.session_state.api_data:
     else:
         shap_values = {}
     
-    # --- JAUGE GÉOMÉTRIQUE ROBUSTE ---
+    # --- 1. JAUGE GÉOMÉTRIQUE ROBUSTE ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -286,10 +286,10 @@ if st.session_state.api_data:
         st.plotly_chart(fig, use_container_width=True)
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
-    # --- FEATURE IMPORTANCE (SHAP) ---
+    # --- 2. FEATURE IMPORTANCE (SHAP) ---
     st.markdown("---")
     st.subheader("2️⃣ Interprétabilité : Facteurs d'influence (Local)")
-    st.caption(f"Pourquoi ce score précis a été attribué (basé sur les données simulées) ?")
+    st.caption(f"Pourquoi le client {selected_id} a eu ce score précis ?")
     
     if shap_values:
         shap_df = pd.DataFrame(list(shap_values.items()), columns=['Feature', 'Impact'])
@@ -298,60 +298,72 @@ if st.session_state.api_data:
         
         fig_shap = px.bar(
             top_shap.sort_values(by='Impact', ascending=True),
-            x='Impact', y='Feature', orientation='h', color='Impact',
+            x='Impact', 
+            y='Feature', 
+            orientation='h', 
+            color='Impact',
             color_continuous_scale=['#2ecc71', '#e74c3c'],
         )
         
         fig_shap.update_layout(
             title="<b>Top 15 des variables contributrices</b>",
             title_font_size=18,
-            xaxis_title="Contribution au risque (Gauche = Baisse, Droite = Hausse)",
+            xaxis_title="Contribution au risque (Gauche = Baisse, Droite = Hausse)", 
             yaxis_title=None,
             showlegend=False,
-            coloraxis_showscale=False,
+            coloraxis_showscale=False, 
             height=500,
             font={'family': "Arial"}
         )
         
         fig_shap.add_vline(x=0, line_width=1, line_color="white", opacity=0.5)
         st.plotly_chart(fig_shap, use_container_width=True)
-        st.info("💡 **Lecture :** Les barres **ROUGES** augmentent le risque. Les barres **VERTES** diminuent le risque.")
+        st.info("💡 **Lecture :** Les barres **ROUGES** (à droite) augmentent le risque de défaut. Les barres **VERTES** (à gauche) diminuent le risque.")
 
-    # --- COMPARAISON (Uni & Bi Variée) ---
-    # Note : Pour la comparaison, on compare le client SIMULÉ (valeur dans clean_features) 
-    # par rapport à la population statique (df).
-    
+    # --- 3. COMPARAISON UNI-VARIÉE (Avec Marges Corrigées) ---
     st.markdown("---")
-    st.subheader("3️⃣ Comparaison : Profil vs Population")
-    st.caption("Positionnement du dossier simulé par rapport à l'ensemble des clients.")
+    st.subheader("3️⃣ Comparaison Uni-variée")
+    st.caption(f"Où se situe le client par rapport à l'ensemble de la population ?")
     
-    col_comp1, col_comp2 = st.columns(2)
-    
-    with col_comp1:
-        # UNI-VARIÉE
+    col_u1, col_u2 = st.columns([1, 3])
+    with col_u1:
         compare_var = st.selectbox(
-            "Distribution (Uni-variée)", 
+            "Variable (Uni)", 
             ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH'],
             index=0
         )
+    
+    with col_u2:
         if compare_var in df.columns:
-            # Valeur du client simulé
+            # On utilise clean_features (valeur simulée)
             client_val = clean_features.get(compare_var, 0)
             
             fig_dist = px.histogram(df, x=compare_var, nbins=50, title=f"Distribution : {compare_var}", color_discrete_sequence=['#95a5a6'], opacity=0.6)
-            fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Dossier Simulé")
-            fig_dist.update_layout(showlegend=False, margin=dict(l=0, r=0, t=40, b=0))
+            fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Dossier")
+            
+            # FIX : Marges augmentées pour éviter de couper les axes
+            fig_dist.update_layout(
+                showlegend=False, 
+                margin=dict(l=50, r=20, t=40, b=50)
+            )
             st.plotly_chart(fig_dist, use_container_width=True)
+    
+    # --- 4. COMPARAISON BI-VARIÉE (Avec Marges Corrigées) ---
+    st.markdown("---")
+    st.subheader("4️⃣ Comparaison Bi-variée (Croisement)")
+    st.caption(f"Le profil du client est-il atypique selon ces deux critères combinés ?")
+    
+    col_b1, col_b2 = st.columns([1, 3])
+    with col_b1:
+        var_x = st.selectbox("Axe X (Bi)", ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH'], index=1)
+        var_y = st.selectbox("Axe Y (Bi)", ['AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH', 'EXT_SOURCE_2'], index=2)
 
-    with col_comp2:
-        # BI-VARIÉE
-        var_x = st.selectbox("Axe X (Bi-variée)", ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH'], index=1)
-        var_y = st.selectbox("Axe Y (Bi-variée)", ['AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH', 'EXT_SOURCE_2'], index=2)
-
+    with col_b2:
         if var_x in df.columns and var_y in df.columns:
             plot_df = df.copy()
-            # Gestion des âges
-            if var_x == 'DAYS_BIRTH': 
+            
+            # Gestion Age
+            if var_x == 'DAYS_BIRTH':
                 plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
                 plot_var_x = 'AGE_YEARS'
                 client_val_x = int(clean_features.get(var_x, 0) / -365)
@@ -378,14 +390,20 @@ if st.session_state.api_data:
                 x=[client_val_x], y=[client_val_y], 
                 mode='markers',
                 marker=dict(color='red', size=15, symbol='star', opacity=1.0),
-                name='Dossier Simulé'
+                name='Dossier'
             ))
+            
+            # FIX : Marges augmentées
             fig_bi.update_layout(
                 title=f"{plot_var_x} vs {plot_var_y}", 
-                xaxis_title=plot_var_x, yaxis_title=plot_var_y,
-                margin=dict(l=0, r=0, t=40, b=0)
+                xaxis_title=plot_var_x, 
+                yaxis_title=plot_var_y,
+                margin=dict(l=50, r=20, t=40, b=50)
             )
             st.plotly_chart(fig_bi, use_container_width=True)
+
+    with st.expander("🔎 Audit des données (JSON envoyé)"):
+        st.json(clean_features)
 
 elif selected_option == "Sélectionner un ID...":
     st.info("👈 Veuillez sélectionner un dossier ou créer une simulation dans la barre latérale.")
