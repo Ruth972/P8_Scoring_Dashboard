@@ -176,84 +176,85 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # --- CALCUL DE L'AIGUILLE DROITE ---
+        # --- CONFIGURATION DE LA JAUGE ---
         gauge_max = threshold * 2 
-        visual_score = min(score, gauge_max)
+        val_visuel = min(score, gauge_max)
         
-        # Conversion Score -> Angle
-        # 0 (Gauche) = 180° | Max (Droite) = 0°
-        angle = 180 - (visual_score / gauge_max) * 180
+        # --- CALCUL DE L'AIGUILLE (Trigonométrie corrigée) ---
+        # 0 (Gauche) = 180 degrés | Max (Droite) = 0 degrés
+        angle_deg = 180 - (val_visuel / gauge_max) * 180
+        angle_rad = math.radians(angle_deg)
         
-        # Coordonnées pour dessiner la LIGNE
-        radius = 0.5
-        radians = math.radians(angle)
-        x_head = 0.5 + radius * math.cos(radians)
-        y_head = radius * math.sin(radians)
+        # Longueur de l'aiguille (0.5 = rayon complet, on met 0.4 pour qu'elle reste dedans)
+        needle_length = 0.40
+        
+        # Coordonnées de la pointe (x1, y1)
+        # Centre du graphique = 0.5, 0
+        x1 = 0.5 + needle_length * math.cos(angle_rad)
+        y1 = 0 + needle_length * math.sin(angle_rad) # y0 est à 0
 
+        # --- CRÉATION DU GRAPHIQUE ---
         fig_gauge = go.Figure()
 
-        # A. La Jauge colorée (Fond)
+        # 1. Le fond coloré (Arc de cercle)
         fig_gauge.add_trace(go.Indicator(
-            mode="gauge+number",
-            value=visual_score,
-            number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Score de Risque", 'font': {'size': 20}},
-            gauge={
-                'shape': 'angular', 
-                'axis': {
-                    'range': [0, gauge_max],
-                    'tickformat': '.0%',
-                    'tickmode': 'array',
-                    'tickvals': [0, threshold, gauge_max],
-                    'ticktext': ['0%', 'SEUIL', 'Max'],
-                    'tickwidth': 2,
-                    'tickcolor': "black"
-                },
-                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, # Barre invisible
+            mode = "gauge+number",
+            value = val_visuel,
+            number = {'suffix': "", 'valueformat': ".1%", 'font': {'size': 40, 'weight': 'bold'}},
+            domain = {'x': [0, 1], 'y': [0, 1]},
+            title = {'text': "Probabilité de Défaut", 'font': {'size': 20, 'color': "gray"}},
+            gauge = {
+                'axis': {'range': [0, gauge_max], 'visible': False}, # On cache les ticks moches
+                'bar': {'color': "rgba(0,0,0,0)"}, # On cache la barre de progression par défaut
                 'bgcolor': "white",
-                'borderwidth': 2,
-                'bordercolor': "#bdc3c7",
+                'borderwidth': 0,
                 'steps': [
-                    {'range': [0, threshold * 0.8], 'color': "#2ecc71"}, 
-                    {'range': [threshold * 0.8, threshold], 'color': "#f1c40f"},
-                    {'range': [threshold, threshold * 1.2], 'color': "#e67e22"},
-                    {'range': [threshold * 1.2, gauge_max], 'color': "#e74c3c"}
-                ],
-                'threshold': {
-                    'line': {'color': "black", 'width': 2},
-                    'thickness': 0.8,
-                    'value': threshold
-                }
+                    {'range': [0, threshold], 'color': "#2ecc71"},   # Vert (Accordé)
+                    {'range': [threshold, gauge_max], 'color': "#e74c3c"}  # Rouge (Refusé)
+                ]
             }
         ))
 
-        # B. L'Aiguille Droite (CORRECTION : Utilisation de add_shape TYPE LINE)
-        # Cela remplace 'add_annotation' qui causait le crash sur le Cloud
+        # 2. LA LIGNE DE SEUIL (Noire verticale au milieu)
         fig_gauge.add_shape(
             type="line",
-            x0=0.5, y0=0,        # Centre
-            x1=x_head, y1=y_head, # Pointe calculée
-            line=dict(color="black", width=4),
+            x0=0.5, y0=0, x1=0.5, y1=0.45, # Ligne verticale à midi
+            line=dict(color="black", width=2, dash="dot"),
+            xref="paper", yref="paper"
+        )
+        # Annotation "Seuil"
+        fig_gauge.add_annotation(
+            x=0.5, y=0.55, text="SEUIL", showarrow=False,
+            font=dict(size=12, color="black"), xref="paper", yref="paper"
+        )
+
+        # 3. L'AIGUILLE (Shape Line) - CORRECTION DU BUG D'AFFICHAGE
+        fig_gauge.add_shape(
+            type="line",
+            x0=0.5, y0=0,       # Départ : Centre Bas exact
+            x1=x1, y1=y1,       # Arrivée : Pointe calculée
+            line=dict(color="#2c3e50", width=5), # Aiguille gris foncé élégante
             xref="paper", yref="paper"
         )
         
-        # C. Le "clou" central
+        # 4. LE PIVOT (Cercle au centre)
         fig_gauge.add_shape(
             type="circle",
             x0=0.48, y0=-0.02, x1=0.52, y1=0.02,
-            fillcolor="black", line_color="black",
+            fillcolor="#2c3e50", line_color="#2c3e50",
             xref="paper", yref="paper"
         )
 
         fig_gauge.update_layout(
-            height=300, 
-            margin=dict(l=20, r=20, t=50, b=20),
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=300,
             font={'family': "Arial"}
         )
+        
         st.plotly_chart(fig_gauge, use_container_width=True)
-
-        st.caption(f"ℹ️ Le seuil critique ({threshold:.1%}) est placé à la verticale.")
+        
+        # Légende sous le graphique pour rassurer l'utilisateur
+        st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
     # FEATURE IMPORTANCE
     st.markdown("---")
