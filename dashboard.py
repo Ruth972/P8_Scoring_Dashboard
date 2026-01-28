@@ -171,7 +171,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- 2. VISUALISATION SCORE ---
+    # --- 2. VISUALISATION SCORE (BULLET CHART) ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -186,24 +186,36 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
+        # Configuration Bullet Chart Horizontal
+        visual_max = threshold * 2 if threshold > 0 else 1.0
+        
         fig_gauge = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
+            mode="number+gauge",
             value=score,
+            number={'valueformat': '.1%'},
             domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Score de Risque", 'font': {'size': 24}},
-            delta={'reference': threshold, 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
+            title={'text': "Position par rapport au seuil de risque", 'font': {'size': 18}},
             gauge={
-                'axis': {'range': [0, 1], 'tickwidth': 1},
-                'bar': {'color': "black"},
-                'bgcolor': "white",
+                'shape': "bullet",
+                'axis': {
+                    'range': [0, visual_max],
+                    'tickformat': '.0%',
+                    'tickmode': 'array',
+                    'tickvals': [0, threshold, visual_max],
+                },
+                'bar': {'color': "black", 'thickness': 0.25},
+                'bgcolor': "#e74c3c", # Fond Rouge (Risque)
                 'steps': [
-                    {'range': [0, threshold], 'color': "#2ecc71"},
-                    {'range': [threshold, 1], 'color': "#e74c3c"}
+                    {'range': [0, threshold], 'color': "#2ecc71"}, # Étape Verte (Sûre)
                 ],
-                'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': threshold}
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.75,
+                    'value': threshold
+                }
             }
         ))
-        fig_gauge.update_layout(height=300, margin=dict(l=20, r=20, t=60, b=20), font={'family': "Arial"})
+        fig_gauge.update_layout(height=250, margin=dict(l=20, r=30, t=60, b=20), font={'family': "Arial"})
         st.plotly_chart(fig_gauge, use_container_width=True)
 
     # --- 3. FEATURE IMPORTANCE LOCALE ---
@@ -277,7 +289,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         if var_x == 'DAYS_BIRTH': client_val_x = int(client_val_x / -365)
         if var_y == 'DAYS_BIRTH': client_val_y = int(client_val_y / -365)
 
-        # --- CONSTRUCTION MANUELLE (Pour forcer l'ordre d'affichage) ---
+        # --- CONSTRUCTION MANUELLE (go.Figure) ---
         fig_bi = go.Figure()
 
         # 1. Le FOND (Points gris) - Dessiné en PREMIER
