@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
+import math  # <--- AJOUT INDISPENSABLE pour l'aiguille droite
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTES
@@ -125,7 +126,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     api_result = st.session_state.api_data
     clean_features = api_result.get('clean_features', {})
     
-    # INFOS CLIENT
+    # INFOS CLIENT (On garde ta version riche)
     client_row = df[df['SK_ID_CURR'] == selected_id]
     infos = get_client_info(selected_id)
     
@@ -160,7 +161,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- JAUGE STYLE "SPEEDOMETER" AVEC SEUIL AU MILIEU ---
+    # --- JAUGE AIGUILLE DROITE (Intégrée ici) ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -175,13 +176,25 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # ASTUCE VISUELLE :
-        # Pour que le seuil soit à la verticale (midi), on fixe le max de la jauge à 2x le seuil.
-        # Ex: Si seuil = 7%, le Max est 14%. Donc 7% est pile au milieu.
-        gauge_max = threshold * 2
+        # --- CALCUL DE L'AIGUILLE DROITE ---
+        # 1. Configuration des bornes (Seuil au milieu)
+        gauge_max = threshold * 2 
         visual_score = min(score, gauge_max)
+        
+        # 2. Conversion Score -> Angle (Degrés)
+        # 0 (min) = 180 degrés (Gauche) | gauge_max (max) = 0 degrés (Droite)
+        angle = 180 - (visual_score / gauge_max) * 180
+        
+        # 3. Conversion Angle -> Coordonnées (x, y) pour dessiner la ligne
+        radius = 0.5 # Longueur de l'aiguille
+        radians = math.radians(angle)
+        x_head = 0.5 + radius * math.cos(radians)
+        y_head = radius * math.sin(radians)
 
-        fig_gauge = go.Figure(go.Indicator(
+        fig_gauge = go.Figure()
+
+        # A. La Jauge colorée (Arrière-plan)
+        fig_gauge.add_trace(go.Indicator(
             mode="gauge+number",
             value=visual_score,
             number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
@@ -193,32 +206,51 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
                     'range': [0, gauge_max],
                     'tickformat': '.0%',
                     'tickmode': 'array',
-                    'tickvals': [0, threshold, gauge_max], # On affiche 0, le Seuil (au milieu) et le Max
-                    'ticktext': ['0%', 'SEUIL CRITIQUE', 'Max'],
+                    'tickvals': [0, threshold, gauge_max],
+                    'ticktext': ['0%', 'SEUIL', 'Max'],
                     'tickwidth': 2,
                     'tickcolor': "black"
                 },
-                # L'AIGUILLE (NOIRE, CLASSIQUE)
-                'bar': {'color': "black", 'thickness': 0.02}, 
+                # TRUC : On rend la barre native transparente pour la cacher !
+                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, 
                 'bgcolor': "white",
                 'borderwidth': 2,
                 'bordercolor': "#bdc3c7",
                 'steps': [
-                    # Reproduction du dégradé de ton image
-                    {'range': [0, threshold * 0.8], 'color': "#2ecc71"}, # Vert
-                    {'range': [threshold * 0.8, threshold], 'color': "#f1c40f"}, # Jaune
-                    {'range': [threshold, threshold * 1.2], 'color': "#e67e22"}, # Orange
-                    {'range': [threshold * 1.2, gauge_max], 'color': "#e74c3c"}  # Rouge
+                    {'range': [0, threshold * 0.8], 'color': "#2ecc71"}, 
+                    {'range': [threshold * 0.8, threshold], 'color': "#f1c40f"},
+                    {'range': [threshold, threshold * 1.2], 'color': "#e67e22"},
+                    {'range': [threshold * 1.2, gauge_max], 'color': "#e74c3c"}
                 ],
-                # PAS DE BARRE NOIRE STATIQUE ICI (Comme demandé)
                 'threshold': {
-                    'line': {'color': "black", 'width': 0}, # Invisible, on se fie à la position verticale
-                    'thickness': 0,
+                    'line': {'color': "black", 'width': 2},
+                    'thickness': 0.8,
                     'value': threshold
                 }
             }
         ))
+
+        # B. L'Aiguille Droite (Dessinée manuellement par dessus)
+        fig_gauge.add_annotation(
+            x=x_head, y=y_head,       # Pointe de l'aiguille
+            ax=0.5, ay=0,             # Base de l'aiguille (Centre)
+            xref="paper", yref="paper",
+            axref="paper", ayref="paper",
+            showarrow=True,
+            arrowhead=2,              
+            arrowsize=1,
+            arrowwidth=4,             # Epaisseur de l'aiguille
+            arrowcolor="black"        # Couleur noire
+        )
         
+        # C. Le "clou" central
+        fig_gauge.add_shape(
+            type="circle",
+            x0=0.48, y0=-0.02, x1=0.52, y1=0.02,
+            fillcolor="black", line_color="black",
+            xref="paper", yref="paper"
+        )
+
         fig_gauge.update_layout(
             height=300, 
             margin=dict(l=20, r=20, t=50, b=20),
@@ -226,8 +258,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
 
-        # Petite légende pour que l'utilisateur comprenne
-        st.caption(f"ℹ️ Le cadran est calibré pour que le seuil critique ({threshold:.1%}) soit exactement au sommet (position verticale).")
+        st.caption(f"ℹ️ Le seuil critique ({threshold:.1%}) est placé à la verticale.")
 
     # FEATURE IMPORTANCE
     st.markdown("---")
