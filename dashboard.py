@@ -161,7 +161,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- JAUGE AIGUILLE DROITE (Design Final) ---
+    # --- JAUGE AIGUILLE DROITE ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -187,7 +187,6 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     with col2:
         # --- CALCUL DE L'AIGUILLE ---
         gauge_max = threshold * 2 
-        # On sécurise pour que ça ne descende jamais sous 0 visuellement
         visual_score = max(0, min(score, gauge_max))
         
         # Angle
@@ -195,14 +194,14 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         angle_rad = math.radians(angle_deg)
         
         # Coordonnées
-        # FIX : On réduit le rayon à 0.45 pour que l'aiguille ne dépasse pas
-        radius = 0.45
+        # FIX : Rayon réduit à 0.30 pour être sûr à 100% que ça reste dedans
+        radius = 0.30
         x_head = 0.5 + radius * math.cos(angle_rad)
         y_head = radius * math.sin(angle_rad)
 
         fig_gauge = go.Figure()
 
-        # A. La Jauge colorée (Fond)
+        # A. La Jauge colorée
         fig_gauge.add_trace(go.Indicator(
             mode="gauge",
             value=visual_score,
@@ -220,12 +219,12 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             }
         ))
 
-        # B. L'Aiguille Droite
+        # B. L'Aiguille Droite (Plus courte)
         fig_gauge.add_shape(
             type="line",
             x0=0.5, y0=0,        
             x1=x_head, y1=y_head, 
-            line=dict(color="#2c3e50", width=4),
+            line=dict(color="#2c3e50", width=5), # Aiguille un peu plus épaisse pour le style
             xref="paper", yref="paper"
         )
         
@@ -237,9 +236,9 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             xref="paper", yref="paper"
         )
 
-        # D. L'ANNOTATION DU SCORE (Au-dessus de l'aiguille)
+        # D. L'ANNOTATION DU SCORE
         fig_gauge.add_annotation(
-            x=0.5, y=0.25, 
+            x=0.5, y=0.15, # Positionnée sous l'aiguille pour ne pas gêner
             text=f"{visual_score:.1%}",
             font=dict(size=40, weight="bold", color="white"),
             showarrow=False,
