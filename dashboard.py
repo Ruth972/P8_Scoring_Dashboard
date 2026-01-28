@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
-import math
+import math  # Indispensable pour l'aiguille
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTES
@@ -161,7 +161,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- JAUGE GÉOMÉTRIQUE (100% ROBUSTE) ---
+    # --- JAUGE GÉOMÉTRIQUE ROBUSTE ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -184,79 +184,35 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # --- 1. CONFIGURATION MATHÉMATIQUE ---
         gauge_max = threshold * 2 
         visual_score = max(0, min(score, gauge_max))
         
-        # Angle de l'aiguille (180=Gauche, 0=Droite)
         angle_deg = 180 - (visual_score / gauge_max) * 180
         angle_rad = math.radians(angle_deg)
         
         fig = go.Figure()
 
-        # --- 2. FONCTION POUR DESSINER LES ARCS (Vert/Rouge) ---
         def draw_arc(start_angle, end_angle, color, name):
-            # On génère plein de points pour faire un arc lisse
             theta = np.linspace(math.radians(start_angle), math.radians(end_angle), 50)
-            r_in, r_out = 0.6, 1.0 # Rayon intérieur et extérieur
-            
-            # Coordonnées extérieur
+            r_in, r_out = 0.6, 1.0
             x_out = r_out * np.cos(theta)
             y_out = r_out * np.sin(theta)
-            
-            # Coordonnées intérieur (on inverse pour fermer la boucle proprement)
             x_in = r_in * np.cos(theta[::-1])
             y_in = r_in * np.sin(theta[::-1])
-            
-            return go.Scatter(
-                x=np.concatenate([x_out, x_in, [x_out[0]]]),
-                y=np.concatenate([y_out, y_in, [y_out[0]]]),
-                fill='toself', mode='none', fillcolor=color, name=name, hoverinfo='skip'
-            )
+            return go.Scatter(x=np.concatenate([x_out, x_in, [x_out[0]]]), y=np.concatenate([y_out, y_in, [y_out[0]]]), fill='toself', mode='none', fillcolor=color, name=name, hoverinfo='skip')
 
-        # Ajout Zone Verte (180° à 90°)
         fig.add_trace(draw_arc(90, 180, "#2ecc71", "Zone Verte"))
-        # Ajout Zone Rouge (90° à 0°)
         fig.add_trace(draw_arc(0, 90, "#e74c3c", "Zone Rouge"))
 
-        # --- 3. DESSIN DE L'AIGUILLE (Ligne Scatter) ---
-        # L'aiguille est maintenant un objet géométrique dans le même repère que les arcs.
-        # Elle ne peut physiquement pas dépasser car elle utilise les mêmes unités.
-        needle_len = 0.90 # Longueur relative au rayon (0.9 = reste dans la bande couleur)
+        needle_len = 0.90
         x_needle = [0, needle_len * math.cos(angle_rad)]
         y_needle = [0, needle_len * math.sin(angle_rad)]
 
-        fig.add_trace(go.Scatter(
-            x=x_needle, y=y_needle, mode='lines',
-            line=dict(color='#2c3e50', width=5), hoverinfo='skip'
-        ))
+        fig.add_trace(go.Scatter(x=x_needle, y=y_needle, mode='lines', line=dict(color='#2c3e50', width=5), hoverinfo='skip'))
+        fig.add_trace(go.Scatter(x=[0], y=[0], mode='markers', marker=dict(color='#2c3e50', size=15), hoverinfo='skip'))
+        fig.add_trace(go.Scatter(x=[0], y=[0.25], mode='text', text=[f"{visual_score:.1%}"], textfont=dict(size=40, color="white", family="Arial Black"), hoverinfo='skip'))
+        fig.add_trace(go.Scatter(x=[0], y=[1.15], mode='text', text=["Score de Risque"], textfont=dict(size=18, color="gray"), hoverinfo='skip'))
 
-        # --- 4. CENTRE ET TEXTE ---
-        # Pivot central
-        fig.add_trace(go.Scatter(
-            x=[0], y=[0], mode='markers',
-            marker=dict(color='#2c3e50', size=15), hoverinfo='skip'
-        ))
-        
-        # Texte Score (Au centre, un peu relevé)
-        fig.add_trace(go.Scatter(
-            x=[0], y=[0.25], mode='text',
-            text=[f"{visual_score:.1%}"],
-            textfont=dict(size=40, color="white", family="Arial Black"),
-            hoverinfo='skip'
-        ))
-        
-        # Titre (Au sommet)
-        fig.add_trace(go.Scatter(
-            x=[0], y=[1.15], mode='text',
-            text=["Score de Risque"],
-            textfont=dict(size=18, color="gray"),
-            hoverinfo='skip'
-        ))
-
-        # --- 5. LAYOUT BLINDÉ (Ratio Fixe) ---
-        # C'est ICI que la magie opère : scaleanchor='x' force un ratio 1:1.
-        # 1 unité en X vaudra toujours 1 unité en Y. Plus de déformation.
         fig.update_layout(
             xaxis=dict(range=[-1.2, 1.2], visible=False, scaleanchor='y', scaleratio=1),
             yaxis=dict(range=[0, 1.3], visible=False),
@@ -266,27 +222,47 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)'
         )
-        
         st.plotly_chart(fig, use_container_width=True)
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
-    # FEATURE IMPORTANCE
+    # --- FEATURE IMPORTANCE (SHAP) - OPTIMISÉ UX ---
     st.markdown("---")
     st.subheader("2️⃣ Interprétabilité : Facteurs d'influence (Local)")
     st.caption(f"Pourquoi le client {selected_id} a eu ce score précis ?")
     
     if shap_values:
+        # On ne change PAS les noms (demande utilisateur), mais on améliore le graphique
         shap_df = pd.DataFrame(list(shap_values.items()), columns=['Feature', 'Impact'])
         shap_df['Abs_Impact'] = shap_df['Impact'].abs()
         top_shap = shap_df.sort_values(by='Abs_Impact', ascending=False).head(15)
         
         fig_shap = px.bar(
             top_shap.sort_values(by='Impact', ascending=True),
-            x='Impact', y='Feature', orientation='h', color='Impact',
+            x='Impact', 
+            y='Feature', # Noms d'origine conservés
+            orientation='h', 
+            color='Impact',
             color_continuous_scale=['#2ecc71', '#e74c3c'],
-            title="Top 15 des variables contributrices"
         )
+        
+        fig_shap.update_layout(
+            title="<b>Top 15 des variables contributrices</b>",
+            title_font_size=18,
+            xaxis_title="Contribution au risque (Gauche = Baisse, Droite = Hausse)", # Axe clarifié
+            yaxis_title=None,
+            showlegend=False,
+            coloraxis_showscale=False, # On supprime la barre de couleur inutile à droite
+            height=500,
+            font={'family': "Arial"}
+        )
+        
+        # Ligne verticale centrale pour bien séparer positif/négatif
+        fig_shap.add_vline(x=0, line_width=1, line_color="white", opacity=0.5)
+        
         st.plotly_chart(fig_shap, use_container_width=True)
+        
+        # Explication UX
+        st.info("💡 **Lecture :** Les barres **ROUGES** (à droite) augmentent le risque de défaut. Les barres **VERTES** (à gauche) diminuent le risque.")
 
     # UNI-VARIÉE
     st.markdown("---")
