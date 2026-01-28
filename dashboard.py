@@ -240,7 +240,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Client", annotation_position="top right")
         st.plotly_chart(fig_dist, use_container_width=True)
     
-    # --- 5. ANALYSE BI-VARIÉE ---
+   # --- 5. ANALYSE BI-VARIÉE ---
     st.markdown("---")
     st.subheader("4️⃣ Comparaison Bi-variée (Croisement)")
     
@@ -268,41 +268,49 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             plot_var_y = 'AGE_YEARS'
         else:
             plot_var_y = var_y
-
-        # 1. Le FOND (Points gris) - Très transparents pour ne pas gêner
-        fig_bi = px.scatter(
-            plot_df, 
-            x=plot_var_x, 
-            y=plot_var_y, 
-            color_discrete_sequence=['#bdc3c7'], 
-            title=f"Croisement : {plot_var_x} vs {plot_var_y}",
-            opacity=0.3 
-        )
         
         # Valeurs du client
         client_val_x = client_row[var_x].values[0]
         client_val_y = client_row[var_y].values[0]
-        
         if var_x == 'DAYS_BIRTH': client_val_x = int(client_val_x / -365)
         if var_y == 'DAYS_BIRTH': client_val_y = int(client_val_y / -365)
 
-        # 2. Le CLIENT (L'étoile) - Au dessus, Rouge pur, Taille normale
-        fig_bi.add_trace(
-            go.Scatter(
-                x=[client_val_x], 
-                y=[client_val_y], 
-                mode='markers',
-                marker=dict(
-                    color='red', 
-                    size=15,       # Taille standard (ni trop petite, ni trop grosse)
-                    symbol='star',
-                    opacity=1.0    # ✅ Opaque à 100% : Ça assure qu'elle est "devant" et bien rouge
-                ),
-                name='Client Sélectionné'
-            )
-        )
+        # --- CONSTRUCTION MANUELLE (Pour forcer l'ordre d'affichage) ---
+        fig_bi = go.Figure()
+
+        # 1. Le FOND (Points gris) - Dessiné en PREMIER
+        fig_bi.add_trace(go.Scatter(
+            x=plot_df[plot_var_x],
+            y=plot_df[plot_var_y],
+            mode='markers',
+            marker=dict(
+                color='#bdc3c7', 
+                size=5, 
+                opacity=0.3 # Transparence
+            ),
+            name='Population'
+        ))
+
+        # 2. Le CLIENT (L'étoile) - Dessiné en DERNIER (donc au-dessus)
+        fig_bi.add_trace(go.Scatter(
+            x=[client_val_x], 
+            y=[client_val_y], 
+            mode='markers',
+            marker=dict(
+                color='red', 
+                size=15,       # Taille standard demandée
+                symbol='star',
+                opacity=1.0    # Rouge pur (pas de mélange)
+            ),
+            name='Client Sélectionné'
+        ))
         
-        fig_bi.update_layout(title_font_size=20)
+        fig_bi.update_layout(
+            title=f"Croisement : {plot_var_x} vs {plot_var_y}",
+            title_font_size=20,
+            xaxis_title=plot_var_x,
+            yaxis_title=plot_var_y
+        )
         
         st.plotly_chart(fig_bi, use_container_width=True)
 
