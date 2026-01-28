@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
-import math  # Indispensable pour l'aiguille
+import math
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTES
@@ -68,7 +68,6 @@ def get_client_info(client_id):
         "Nom": np.random.choice(noms),
         "Prénom": np.random.choice(prenoms),
         "Ville": np.random.choice(villes),
-        "Adresse": f"{np.random.randint(1, 150)} rue de la République",
         "Email": f"client.{client_id}@email.com"
     }
 
@@ -289,7 +288,8 @@ if st.session_state.api_data:
     # --- 2. FEATURE IMPORTANCE (SHAP) ---
     st.markdown("---")
     st.subheader("2️⃣ Interprétabilité : Facteurs d'influence (Local)")
-    st.caption(f"Pourquoi le client {selected_id} a eu ce score précis ?")
+    # CORRECTION ICI : Utilisation de current_id au lieu de selected_id
+    st.caption(f"Pourquoi le client {current_id} a eu ce score précis ?")
     
     if shap_values:
         shap_df = pd.DataFrame(list(shap_values.items()), columns=['Feature', 'Impact'])
@@ -320,10 +320,11 @@ if st.session_state.api_data:
         st.plotly_chart(fig_shap, use_container_width=True)
         st.info("💡 **Lecture :** Les barres **ROUGES** (à droite) augmentent le risque de défaut. Les barres **VERTES** (à gauche) diminuent le risque.")
 
-    # --- 3. COMPARAISON UNI-VARIÉE (Avec Marges Corrigées) ---
+    # --- 3. COMPARAISON UNI-VARIÉE ---
     st.markdown("---")
     st.subheader("3️⃣ Comparaison Uni-variée")
-    st.caption(f"Où se situe le client par rapport à l'ensemble de la population ?")
+    # CORRECTION ICI : Utilisation de current_id
+    st.caption(f"Où se situe le client {current_id} par rapport à l'ensemble de la population ?")
     
     col_u1, col_u2 = st.columns([1, 3])
     with col_u1:
@@ -335,23 +336,17 @@ if st.session_state.api_data:
     
     with col_u2:
         if compare_var in df.columns:
-            # On utilise clean_features (valeur simulée)
             client_val = clean_features.get(compare_var, 0)
-            
             fig_dist = px.histogram(df, x=compare_var, nbins=50, title=f"Distribution : {compare_var}", color_discrete_sequence=['#95a5a6'], opacity=0.6)
             fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Dossier")
-            
-            # FIX : Marges augmentées pour éviter de couper les axes
-            fig_dist.update_layout(
-                showlegend=False, 
-                margin=dict(l=50, r=20, t=40, b=50)
-            )
+            fig_dist.update_layout(showlegend=False, margin=dict(l=50, r=20, t=40, b=50))
             st.plotly_chart(fig_dist, use_container_width=True)
     
-    # --- 4. COMPARAISON BI-VARIÉE (Avec Marges Corrigées) ---
+    # --- 4. COMPARAISON BI-VARIÉE ---
     st.markdown("---")
     st.subheader("4️⃣ Comparaison Bi-variée (Croisement)")
-    st.caption(f"Le profil du client est-il atypique selon ces deux critères combinés ?")
+    # CORRECTION ICI : Utilisation de current_id
+    st.caption(f"Le profil du client {current_id} est-il atypique selon ces deux critères combinés ?")
     
     col_b1, col_b2 = st.columns([1, 3])
     with col_b1:
@@ -362,7 +357,6 @@ if st.session_state.api_data:
         if var_x in df.columns and var_y in df.columns:
             plot_df = df.copy()
             
-            # Gestion Age
             if var_x == 'DAYS_BIRTH':
                 plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
                 plot_var_x = 'AGE_YEARS'
@@ -393,7 +387,6 @@ if st.session_state.api_data:
                 name='Dossier'
             ))
             
-            # FIX : Marges augmentées
             fig_bi.update_layout(
                 title=f"{plot_var_x} vs {plot_var_y}", 
                 xaxis_title=plot_var_x, 
