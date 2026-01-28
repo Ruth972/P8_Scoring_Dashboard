@@ -227,6 +227,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     # --- 4. ANALYSE UNI-VARIÉE ---
     st.markdown("---")
     st.subheader("3️⃣ Comparaison Uni-variée")
+    st.caption(f"Où se situe le client {selected_id} par rapport à l'ensemble de la population ?")
     
     compare_var = st.selectbox(
         "Variable à comparer :", 
@@ -240,9 +241,10 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Client", annotation_position="top right")
         st.plotly_chart(fig_dist, use_container_width=True)
     
-   # --- 5. ANALYSE BI-VARIÉE ---
+    # --- 5. ANALYSE BI-VARIÉE ---
     st.markdown("---")
     st.subheader("4️⃣ Comparaison Bi-variée (Croisement)")
+    st.caption(f"Le profil du client {selected_id} est-il atypique selon ces deux critères combinés ?")
     
     col_bi1, col_bi2 = st.columns(2)
     with col_bi1:
