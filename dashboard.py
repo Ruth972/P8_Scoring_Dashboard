@@ -49,7 +49,14 @@ def load_global_importance():
     except FileNotFoundError:
         return pd.DataFrame()
 
-def get_client_info(client_id):
+def get_client_info(client_id, modified_income=None):
+    # Simulation d'infos civiles (non utilisées par le modèle)
+    if client_id == "Nouveau Dossier":
+        return {
+            "Nom": "Nouveau", "Prénom": "Client", 
+            "Ville": "Inconnue", "Email": "nouveau@client.com"
+        }
+    
     np.random.seed(int(client_id)) 
     noms = ["Martin", "Bernard", "Thomas", "Petit", "Robert", "Richard", "Durand", "Dubois"]
     prenoms = ["Jean", "Marie", "Michel", "Pierre", "Paul", "Jacques", "Sophie", "Julie"]
@@ -58,53 +65,101 @@ def get_client_info(client_id):
         "Nom": np.random.choice(noms),
         "Prénom": np.random.choice(prenoms),
         "Ville": np.random.choice(villes),
-        "Adresse": f"{np.random.randint(1, 150)} rue de la République",
         "Email": f"client.{client_id}@email.com"
     }
 
 # ==============================================================================
-# SIDEBAR
+# SIDEBAR (SÉLECTION & SIMULATION)
 # ==============================================================================
 
-st.sidebar.header("🔍 Sélection du Dossier")
+st.sidebar.header("🔍 Dossier & Simulation")
 
 if not df.empty:
-    id_list = df['SK_ID_CURR'].unique()
-    selected_id = st.sidebar.selectbox("Identifiant Client (ID)", id_list)
+    # Liste des ID + Option "Nouveau Dossier"
+    id_list = df['SK_ID_CURR'].unique().tolist()
+    id_options = ["Sélectionner un ID..."] + id_list + ["🆕 Nouveau Dossier (Vierge)"]
     
-    if st.sidebar.button("📊 Lancer l'analyse de risque"):
-        st.session_state.current_client_id = selected_id
+    selected_option = st.sidebar.selectbox("Identifiant Client", id_options)
+    
+    # Dictionnaire pour stocker les valeurs modifiées
+    input_data = {}
+    
+    if selected_option != "Sélectionner un ID...":
         
-        client_row = df[df['SK_ID_CURR'] == selected_id]
-        if not client_row.empty:
-            cols_excluded = ['TARGET', 'SK_ID_CURR', 'index', 'Unnamed: 0']
-            client_data_dict = client_row.drop(columns=cols_excluded, errors='ignore').iloc[0].to_dict()
-            clean_features = {k: (0 if pd.isna(v) else v) for k, v in client_data_dict.items()}
+        # 1. RÉCUPÉRATION DES DONNÉES DE BASE
+        if selected_option == "🆕 Nouveau Dossier (Vierge)":
+            # On prend la moyenne des données comme base pour un nouveau dossier
+            base_data = df.mean(numeric_only=True).to_dict()
+            st.sidebar.warning("Mode Création : Les valeurs par défaut sont les moyennes du marché.")
+            current_id = "Nouveau Dossier"
+        else:
+            # On prend les données réelles du client
+            current_id = selected_option
+            base_data = df[df['SK_ID_CURR'] == current_id].iloc[0].to_dict()
+
+        # 2. FORMULAIRE DE MODIFICATION (Les Top Features)
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("✏️ Modifier les informations")
+        with st.sidebar.expander("Paramètres du dossier", expanded=True):
+            # On définit les variables clés qu'on veut laisser modifier
+            # (Nom technique, Label lisible, Step)
+            key_features = [
+                ('AMT_INCOME_TOTAL', 'Revenus Annuels ($)', 1000.0),
+                ('AMT_CREDIT', 'Montant du Crédit ($)', 5000.0),
+                ('AMT_ANNUITY', 'Annuités ($)', 500.0),
+                ('DAYS_BIRTH', 'Âge (Jours négatifs)', 100.0),
+                ('EXT_SOURCE_1', 'Score Extérieur 1 (0-1)', 0.01),
+                ('EXT_SOURCE_2', 'Score Extérieur 2 (0-1)', 0.01),
+                ('EXT_SOURCE_3', 'Score Extérieur 3 (0-1)', 0.01),
+                ('DAYS_EMPLOYED', 'Ancienneté Emploi (Jours)', 100.0),
+                ('AMT_GOODS_PRICE', 'Prix du bien ($)', 5000.0)
+            ]
             
-            with st.spinner('Analyse en cours...'):
+            # Génération des inputs
+            for col, label, step_val in key_features:
+                if col in base_data:
+                    val = base_data[col]
+                    # Gestion des NaN
+                    if pd.isna(val): val = 0.0
+                    
+                    # Input interactif
+                    input_data[col] = st.number_input(
+                        label, 
+                        value=float(val), 
+                        step=step_val,
+                        format="%.2f"
+                    )
+        
+        # 3. BOUTON D'ACTION
+        if st.sidebar.button("🚀 Calculer le Score (Rafraîchir)"):
+            st.session_state.current_client_id = current_id
+            
+            # Fusion : On prend toutes les données de base, et on écrase avec les inputs modifiés
+            # Cela permet d'envoyer un vecteur complet à l'API (avec les 100+ autres colonnes inchangées)
+            final_features = base_data.copy()
+            final_features.update(input_data)
+            
+            # Nettoyage technique (NaN -> 0, exclusion colonnes inutiles)
+            cols_excluded = ['TARGET', 'SK_ID_CURR', 'index', 'Unnamed: 0']
+            clean_features = {k: (0 if pd.isna(v) else v) for k, v in final_features.items() if k not in cols_excluded}
+            
+            with st.spinner('Analyse du profil modifié en cours...'):
                 try:
                     payload = {"dataframe_records": [clean_features]}
                     response = requests.post(API_URL, json=payload)
                     if response.status_code == 200:
                         st.session_state.api_data = response.json()
                         st.session_state.api_data['clean_features'] = clean_features 
+                        st.session_state.is_simulation = (input_data != {k: base_data[k] for k in input_data if k in base_data})
                     else:
                         st.error(f"Erreur API : {response.status_code}")
-                        st.session_state.api_data = None
                 except Exception as e:
                     st.error(f"Erreur technique : {e}")
-                    st.session_state.api_data = None
+
 else:
     st.sidebar.warning("Données indisponibles.")
 
 st.sidebar.markdown("---")
-st.sidebar.info(
-    "**Note :** Ce dashboard est une interface d'aide à la décision. "
-    "Les scores sont générés par un modèle de Machine Learning via API."
-)
-st.sidebar.markdown("---")
-
-# --- IMPORTANCE GLOBALE (Avec explication ajoutée) ---
 st.sidebar.subheader("🌍 Importance Globale")
 global_feat_importance = load_global_importance()
 if not global_feat_importance.empty:
@@ -115,8 +170,7 @@ if not global_feat_importance.empty:
     )
     fig_global.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0), xaxis_title=None, yaxis_title=None)
     st.sidebar.plotly_chart(fig_global, use_container_width=True)
-    # AJOUT : Caption explicative
-    st.sidebar.caption("📊 **Lecture :** Ces variables sont celles qui ont le plus de poids dans la construction du modèle mathématique global.")
+    st.sidebar.caption("📊 **Lecture :** Variables ayant le plus de poids dans le modèle global.")
 
 # ==============================================================================
 # CORPS PRINCIPAL
@@ -124,22 +178,26 @@ if not global_feat_importance.empty:
 
 st.title("🏦 Dashboard de Scoring Crédit")
 
-if st.session_state.api_data and st.session_state.current_client_id == selected_id:
+if st.session_state.api_data:
     
     api_result = st.session_state.api_data
     clean_features = api_result.get('clean_features', {})
+    current_id = st.session_state.current_client_id
     
-    # INFOS CLIENT
-    client_row = df[df['SK_ID_CURR'] == selected_id]
-    infos = get_client_info(selected_id)
+    # INFOS CLIENT (Dynamiques selon les inputs)
+    infos = get_client_info(current_id)
     
     with st.container():
-        st.markdown("### 👤 Fiche Client")
+        # Petit badge si c'est une simulation
+        if getattr(st.session_state, 'is_simulation', False) or current_id == "Nouveau Dossier":
+            st.warning("⚠️ **Mode Simulation actif :** Les résultats affichés sont basés sur les données modifiées dans la barre latérale.")
+        
+        st.markdown("### 👤 Fiche Client (Données utilisées)")
         col_info1, col_info2, col_info3, col_info4 = st.columns(4)
         col_info1.metric("Nom", f"{infos['Nom']} {infos['Prénom']}")
-        col_info2.metric("ID Client", str(selected_id))
-        col_info3.metric("Ville", infos['Ville'])
-        col_info4.metric("Revenu Annuel", f"{client_row['AMT_INCOME_TOTAL'].values[0]:,.0f} $")
+        col_info2.metric("ID Dossier", str(current_id))
+        col_info3.metric("Revenu Annuel (Simulé)", f"{clean_features.get('AMT_INCOME_TOTAL', 0):,.0f} $")
+        col_info4.metric("Montant Crédit (Simulé)", f"{clean_features.get('AMT_CREDIT', 0):,.0f} $")
         st.markdown("---")
 
     # DÉBALLAGE JSON
@@ -228,10 +286,10 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         st.plotly_chart(fig, use_container_width=True)
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
-    # --- FEATURE IMPORTANCE (SHAP) - OPTIMISÉ UX ---
+    # --- FEATURE IMPORTANCE (SHAP) ---
     st.markdown("---")
     st.subheader("2️⃣ Interprétabilité : Facteurs d'influence (Local)")
-    st.caption(f"Pourquoi le client {selected_id} a eu ce score précis ?")
+    st.caption(f"Pourquoi ce score précis a été attribué (basé sur les données simulées) ?")
     
     if shap_values:
         shap_df = pd.DataFrame(list(shap_values.items()), columns=['Feature', 'Impact'])
@@ -240,10 +298,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         
         fig_shap = px.bar(
             top_shap.sort_values(by='Impact', ascending=True),
-            x='Impact', 
-            y='Feature', 
-            orientation='h', 
-            color='Impact',
+            x='Impact', y='Feature', orientation='h', color='Impact',
             color_continuous_scale=['#2ecc71', '#e74c3c'],
         )
         
@@ -260,76 +315,77 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
         
         fig_shap.add_vline(x=0, line_width=1, line_color="white", opacity=0.5)
         st.plotly_chart(fig_shap, use_container_width=True)
-        st.info("💡 **Lecture :** Les barres **ROUGES** (à droite) augmentent le risque de défaut. Les barres **VERTES** (à gauche) diminuent le risque.")
+        st.info("💡 **Lecture :** Les barres **ROUGES** augmentent le risque. Les barres **VERTES** diminuent le risque.")
 
-    # UNI-VARIÉE
+    # --- COMPARAISON (Uni & Bi Variée) ---
+    # Note : Pour la comparaison, on compare le client SIMULÉ (valeur dans clean_features) 
+    # par rapport à la population statique (df).
+    
     st.markdown("---")
-    st.subheader("3️⃣ Comparaison Uni-variée")
-    st.caption(f"Où se situe le client {selected_id} par rapport à l'ensemble de la population ?")
+    st.subheader("3️⃣ Comparaison : Profil vs Population")
+    st.caption("Positionnement du dossier simulé par rapport à l'ensemble des clients.")
     
-    compare_var = st.selectbox(
-        "Variable à comparer :", 
-        ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH'],
-        index=0
-    )
+    col_comp1, col_comp2 = st.columns(2)
     
-    if compare_var in df.columns:
-        client_val = client_row[compare_var].values[0]
-        fig_dist = px.histogram(df, x=compare_var, nbins=50, title=f"Distribution : {compare_var}", color_discrete_sequence=['#95a5a6'], opacity=0.6)
-        fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Client", annotation_position="top right")
-        st.plotly_chart(fig_dist, use_container_width=True)
-    
-    # BI-VARIÉE
-    st.markdown("---")
-    st.subheader("4️⃣ Comparaison Bi-variée (Croisement)")
-    st.caption(f"Le profil du client {selected_id} est-il atypique selon ces deux critères combinés ?")
-    
-    col_bi1, col_bi2 = st.columns(2)
-    with col_bi1:
-        options_x = ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH']
-        var_x = st.selectbox("Axe X :", options_x, index=1)
-    with col_bi2:
-        options_y = ['AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH', 'EXT_SOURCE_2']
-        var_y = st.selectbox("Axe Y :", options_y, index=2)
-
-    if var_x in df.columns and var_y in df.columns:
-        plot_df = df.copy()
-        
-        if var_x == 'DAYS_BIRTH':
-            plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
-            plot_var_x = 'AGE_YEARS'
-        else:
-            plot_var_x = var_x
+    with col_comp1:
+        # UNI-VARIÉE
+        compare_var = st.selectbox(
+            "Distribution (Uni-variée)", 
+            ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH'],
+            index=0
+        )
+        if compare_var in df.columns:
+            # Valeur du client simulé
+            client_val = clean_features.get(compare_var, 0)
             
-        if var_y == 'DAYS_BIRTH':
-            plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
-            plot_var_y = 'AGE_YEARS'
-        else:
-            plot_var_y = var_y
-        
-        client_val_x = client_row[var_x].values[0]
-        client_val_y = client_row[var_y].values[0]
-        if var_x == 'DAYS_BIRTH': client_val_x = int(client_val_x / -365)
-        if var_y == 'DAYS_BIRTH': client_val_y = int(client_val_y / -365)
+            fig_dist = px.histogram(df, x=compare_var, nbins=50, title=f"Distribution : {compare_var}", color_discrete_sequence=['#95a5a6'], opacity=0.6)
+            fig_dist.add_vline(x=client_val, line_width=3, line_dash="dash", line_color="#e74c3c", annotation_text="Dossier Simulé")
+            fig_dist.update_layout(showlegend=False, margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig_dist, use_container_width=True)
 
-        fig_bi = go.Figure()
-        fig_bi.add_trace(go.Scatter(
-            x=plot_df[plot_var_x], y=plot_df[plot_var_y],
-            mode='markers',
-            marker=dict(color='#bdc3c7', size=5, opacity=0.3),
-            name='Population'
-        ))
-        fig_bi.add_trace(go.Scatter(
-            x=[client_val_x], y=[client_val_y], 
-            mode='markers',
-            marker=dict(color='red', size=15, symbol='star', opacity=1.0),
-            name='Client Sélectionné'
-        ))
-        fig_bi.update_layout(title=f"Croisement : {plot_var_x} vs {plot_var_y}", title_font_size=20, xaxis_title=plot_var_x, yaxis_title=plot_var_y)
-        st.plotly_chart(fig_bi, use_container_width=True)
+    with col_comp2:
+        # BI-VARIÉE
+        var_x = st.selectbox("Axe X (Bi-variée)", ['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH'], index=1)
+        var_y = st.selectbox("Axe Y (Bi-variée)", ['AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH', 'EXT_SOURCE_2'], index=2)
 
-    with st.expander("🔎 Audit des données"):
-        st.json(clean_features)
+        if var_x in df.columns and var_y in df.columns:
+            plot_df = df.copy()
+            # Gestion des âges
+            if var_x == 'DAYS_BIRTH': 
+                plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
+                plot_var_x = 'AGE_YEARS'
+                client_val_x = int(clean_features.get(var_x, 0) / -365)
+            else:
+                plot_var_x = var_x
+                client_val_x = clean_features.get(var_x, 0)
+                
+            if var_y == 'DAYS_BIRTH':
+                plot_df['AGE_YEARS'] = (plot_df['DAYS_BIRTH'] / -365).astype(int)
+                plot_var_y = 'AGE_YEARS'
+                client_val_y = int(clean_features.get(var_y, 0) / -365)
+            else:
+                plot_var_y = var_y
+                client_val_y = clean_features.get(var_y, 0)
 
-elif selected_id:
-    st.info("👈 Veuillez cliquer sur 'Lancer l'analyse' dans la barre latérale pour démarrer.")
+            fig_bi = go.Figure()
+            fig_bi.add_trace(go.Scatter(
+                x=plot_df[plot_var_x], y=plot_df[plot_var_y],
+                mode='markers',
+                marker=dict(color='#bdc3c7', size=5, opacity=0.3),
+                name='Population'
+            ))
+            fig_bi.add_trace(go.Scatter(
+                x=[client_val_x], y=[client_val_y], 
+                mode='markers',
+                marker=dict(color='red', size=15, symbol='star', opacity=1.0),
+                name='Dossier Simulé'
+            ))
+            fig_bi.update_layout(
+                title=f"{plot_var_x} vs {plot_var_y}", 
+                xaxis_title=plot_var_x, yaxis_title=plot_var_y,
+                margin=dict(l=0, r=0, t=40, b=0)
+            )
+            st.plotly_chart(fig_bi, use_container_width=True)
+
+elif selected_option == "Sélectionner un ID...":
+    st.info("👈 Veuillez sélectionner un dossier ou créer une simulation dans la barre latérale.")
