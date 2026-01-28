@@ -171,7 +171,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- 2. VISUALISATION SCORE (JAUGE + BRIQUE JAUNE) ---
+    # --- 2. VISUALISATION SCORE (SPEEDOMETER NORMALISÉ) ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -186,48 +186,66 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             """, unsafe_allow_html=True)
             
     with col2:
-        # --- GRAPHIQUE CUSTOM : JAUGE AVEC BRIQUE JAUNE ---
+        # --- LOGIQUE DE NORMALISATION ---
+        # Pour que le seuil soit visuellement au "Milieu" (12h00) du demi-cercle,
+        # on définit le Maximum de la jauge à exactement 2 fois le seuil.
+        # Ex: Si seuil = 7%, le Max sera 14%.
+        # Ainsi 7% est à 50% de la jauge.
+        gauge_max = threshold * 2
+        
+        # Si le score du client explose ce maximum (ex: 50%), on le cape visuellement au max
+        # pour que l'aiguille aille à fond à droite sans casser l'échelle.
+        visual_score = min(score, gauge_max)
+
+        # --- GRAPHIQUE JAUGE "SPEEDOMETER" ---
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=score,
-            number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 40, 'weight': 'bold'}},
+            value=visual_score,
+            number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
             domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Position du client face au risque", 'font': {'size': 20}},
+            title={'text': "Niveau de Risque Normalisé", 'font': {'size': 18}},
             gauge={
-                'shape': 'angular',
-                'axis': {'range': [0, 1], 'tickwidth': 2, 'tickcolor': "black", 'tickformat': '.0%'},
-                'bar': {'color': "black", 'thickness': 0.3},
+                'shape': 'angular', # Demi-cercle
+                'axis': {
+                    'range': [0, gauge_max], # Échelle zoomée autour du seuil
+                    'tickformat': '.1%',     # Affichage en %
+                    'tickmode': 'array',
+                    'tickvals': [0, threshold, gauge_max], # Ticks: 0, Seuil, Max
+                    'ticktext': ['0%', 'SEUIL', 'Max'],    # Texte explicite
+                    'tickwidth': 2
+                },
+                'bar': {'color': "black", 'thickness': 0.25}, # Aiguille noire classique
                 'bgcolor': "white",
                 'borderwidth': 2,
                 'bordercolor': "#bdc3c7",
                 'steps': [
-                    {'range': [0, threshold], 'color': "#27ae60"}, # Vert
-                    {'range': [threshold, 1], 'color': "#c0392b"}  # Rouge
+                    # On reproduit le dégradé de ton image : Vert -> Jaune -> Orange -> Rouge
+                    # 1. Vert (Sûr) : De 0 à 80% du seuil
+                    {'range': [0, threshold * 0.8], 'color': "#2ecc71"}, 
+                    # 2. Jaune (Attention) : De 80% à 100% du seuil (Approche du seuil)
+                    {'range': [threshold * 0.8, threshold], 'color': "#f1c40f"},
+                    # 3. Orange (Danger immédiat) : De 100% à 120% du seuil
+                    {'range': [threshold, threshold * 1.2], 'color': "#e67e22"},
+                    # 4. Rouge (Refus net) : Le reste
+                    {'range': [threshold * 1.2, gauge_max], 'color': "#e74c3c"}
                 ],
                 'threshold': {
-                    'line': {'color': "#f1c40f", 'width': 20}, # La brique jaune
+                    'line': {'color': "black", 'width': 4},
                     'thickness': 1.0,
-                    'value': threshold
+                    'value': threshold # Une ligne noire marque le seuil exact
                 }
             }
         ))
         
         fig_gauge.update_layout(
-            height=350, 
-            margin=dict(l=30, r=30, t=80, b=30),
+            height=300, 
+            margin=dict(l=20, r=20, t=50, b=20),
             font={'family': "Arial"}
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
 
-        # --- LÉGENDE EXPLICATIVE ---
-        st.markdown("""
-            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #dee2e6; font-size: 0.9em; text-align: center;">
-                <strong>Légende de la jauge :</strong><br>
-                <span style='color: #27ae60;'>■</span> <strong>Zone Verte</strong> : Score faible, risque acceptable (Crédit Accordé).<br>
-                <span style='color: #f1c40f; font-size: 1.2em;'>■</span> <strong>Barre Jaune</strong> : Seuil critique (Frontière de décision).<br>
-                <span style='color: #c0392b;'>■</span> <strong>Zone Rouge</strong> : Score élevé, risque trop important (Crédit Refusé).
-            </div>
-            """, unsafe_allow_html=True)
+        # Légende explicative
+        st.caption(f"ℹ️ Échelle normalisée : Le seuil critique ({threshold:.1%}) est placé au centre.")
 
     # --- 3. FEATURE IMPORTANCE LOCALE ---
     st.markdown("---")
