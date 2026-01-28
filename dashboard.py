@@ -161,83 +161,74 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- JAUGE AIGUILLE DROITE ---
+    # --- JAUGE AIGUILLE DROITE (Design Final) ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        color = "green" if decision == "ACCORDÉ" else "red"
+        # ALIGNEMENT : Ajout de margin-top pour descendre le bloc
+        color = "#2ecc71" if decision == "ACCORDÉ" else "#e74c3c"
         st.markdown(f"""
-            <div style="text-align: center; border: 2px solid {color}; padding: 15px; border-radius: 10px; background-color: rgba(0,0,0,0.05);">
-                <h2 style="color: {color}; margin:0;">{decision}</h2>
-                <hr style="margin: 10px 0;">
-                <p style="margin:0; font-size: 1.1em;">Probabilité de défaut : <strong>{score:.1%}</strong></p>
+            <div style="
+                text-align: center; 
+                padding: 20px; 
+                border: 2px solid {color}; 
+                border-radius: 10px; 
+                margin-top: 40px; 
+                background-color: rgba(255,255,255,0.05);">
+                <h2 style="color: {color}; margin-bottom: 10px;">{decision}</h2>
+                <hr style="margin: 10px 0; border-top: 1px solid {color}; opacity: 0.3;">
+                <p style="margin: 0; font-size: 1.1em;">
+                    Probabilité de défaut : <strong style="font-size: 1.2em;">{score:.1%}</strong>
+                </p>
             </div>
             """, unsafe_allow_html=True)
             
     with col2:
-        # --- CONFIGURATION DE LA JAUGE ---
+        # --- CALCUL DE L'AIGUILLE ---
         gauge_max = threshold * 2 
         val_visuel = min(score, gauge_max)
         
-        # --- CALCUL DE L'AIGUILLE (Trigonométrie corrigée) ---
-        # 0 (Gauche) = 180 degrés | Max (Droite) = 0 degrés
+        # Angle
         angle_deg = 180 - (val_visuel / gauge_max) * 180
         angle_rad = math.radians(angle_deg)
         
-        # Longueur de l'aiguille (0.5 = rayon complet, on met 0.4 pour qu'elle reste dedans)
-        needle_length = 0.40
-        
-        # Coordonnées de la pointe (x1, y1)
-        # Centre du graphique = 0.5, 0
-        x1 = 0.5 + needle_length * math.cos(angle_rad)
-        y1 = 0 + needle_length * math.sin(angle_rad) # y0 est à 0
+        # Coordonnées
+        radius = 0.5
+        x_head = 0.5 + radius * math.cos(angle_rad)
+        y_head = radius * math.sin(angle_rad)
 
-        # --- CRÉATION DU GRAPHIQUE ---
         fig_gauge = go.Figure()
 
-        # 1. Le fond coloré (Arc de cercle)
+        # A. La Jauge colorée (Fond)
         fig_gauge.add_trace(go.Indicator(
-            mode = "gauge+number",
-            value = val_visuel,
-            number = {'suffix': "", 'valueformat': ".1%", 'font': {'size': 40, 'weight': 'bold'}},
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "Probabilité de Défaut", 'font': {'size': 20, 'color': "gray"}},
-            gauge = {
-                'axis': {'range': [0, gauge_max], 'visible': False}, # On cache les ticks moches
-                'bar': {'color': "rgba(0,0,0,0)"}, # On cache la barre de progression par défaut
+            mode="gauge+number",
+            value=visual_score,
+            number={'suffix': "", 'valueformat': ".1%", 'font': {'size': 35, 'weight': 'bold'}},
+            domain={'x': [0, 1], 'y': [0, 1]},
+            title={'text': "Score de Risque", 'font': {'size': 20, 'color': "gray"}},
+            gauge={
+                'axis': {'range': [0, gauge_max], 'visible': False}, # Axe caché pour être épuré
+                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, # Barre invisible
                 'bgcolor': "white",
                 'borderwidth': 0,
                 'steps': [
-                    {'range': [0, threshold], 'color': "#2ecc71"},   # Vert (Accordé)
-                    {'range': [threshold, gauge_max], 'color': "#e74c3c"}  # Rouge (Refusé)
+                    {'range': [0, threshold], 'color': "#2ecc71"}, # Vert
+                    {'range': [threshold, gauge_max], 'color': "#e74c3c"} # Rouge
                 ]
             }
         ))
 
-        # 2. LA LIGNE DE SEUIL (Noire verticale au milieu)
+        # B. L'Aiguille Droite (ROBUSTE : type "line")
         fig_gauge.add_shape(
             type="line",
-            x0=0.5, y0=0, x1=0.5, y1=0.45, # Ligne verticale à midi
-            line=dict(color="black", width=2, dash="dot"),
-            xref="paper", yref="paper"
-        )
-        # Annotation "Seuil"
-        fig_gauge.add_annotation(
-            x=0.5, y=0.55, text="SEUIL", showarrow=False,
-            font=dict(size=12, color="black"), xref="paper", yref="paper"
-        )
-
-        # 3. L'AIGUILLE (Shape Line) - CORRECTION DU BUG D'AFFICHAGE
-        fig_gauge.add_shape(
-            type="line",
-            x0=0.5, y0=0,       # Départ : Centre Bas exact
-            x1=x1, y1=y1,       # Arrivée : Pointe calculée
-            line=dict(color="#2c3e50", width=5), # Aiguille gris foncé élégante
+            x0=0.5, y0=0,        
+            x1=x_head, y1=y_head, 
+            line=dict(color="#2c3e50", width=4),
             xref="paper", yref="paper"
         )
         
-        # 4. LE PIVOT (Cercle au centre)
+        # C. Le "clou" central
         fig_gauge.add_shape(
             type="circle",
             x0=0.48, y0=-0.02, x1=0.52, y1=0.02,
@@ -245,15 +236,15 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             xref="paper", yref="paper"
         )
 
+        # D. Mise en page (Marges réduites pour remonter le graph vers le centre)
         fig_gauge.update_layout(
-            margin=dict(l=20, r=20, t=30, b=20),
-            height=300,
+            height=300, 
+            margin=dict(l=20, r=20, t=10, b=20),
             font={'family': "Arial"}
         )
-        
         st.plotly_chart(fig_gauge, use_container_width=True)
         
-        # Légende sous le graphique pour rassurer l'utilisateur
+        # Légende
         st.caption(f"Le seuil de risque est fixé à **{threshold:.1%}**. Si l'aiguille est dans la zone verte, le crédit est accordé.")
 
     # FEATURE IMPORTANCE
