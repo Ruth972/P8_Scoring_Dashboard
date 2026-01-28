@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
-import math  # <--- AJOUT INDISPENSABLE pour l'aiguille droite
+import math  # Indispensable pour l'aiguille
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTES
@@ -126,7 +126,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     api_result = st.session_state.api_data
     clean_features = api_result.get('clean_features', {})
     
-    # INFOS CLIENT (On garde ta version riche)
+    # INFOS CLIENT
     client_row = df[df['SK_ID_CURR'] == selected_id]
     infos = get_client_info(selected_id)
     
@@ -161,7 +161,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
     else:
         shap_values = {}
     
-    # --- JAUGE AIGUILLE DROITE (Intégrée ici) ---
+    # --- JAUGE AIGUILLE DROITE ---
     st.subheader("1️⃣ Synthèse de la décision")
     col1, col2 = st.columns([1, 2])
     
@@ -177,23 +177,22 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             
     with col2:
         # --- CALCUL DE L'AIGUILLE DROITE ---
-        # 1. Configuration des bornes (Seuil au milieu)
         gauge_max = threshold * 2 
         visual_score = min(score, gauge_max)
         
-        # 2. Conversion Score -> Angle (Degrés)
-        # 0 (min) = 180 degrés (Gauche) | gauge_max (max) = 0 degrés (Droite)
+        # Conversion Score -> Angle
+        # 0 (Gauche) = 180° | Max (Droite) = 0°
         angle = 180 - (visual_score / gauge_max) * 180
         
-        # 3. Conversion Angle -> Coordonnées (x, y) pour dessiner la ligne
-        radius = 0.5 # Longueur de l'aiguille
+        # Coordonnées pour dessiner la LIGNE
+        radius = 0.5
         radians = math.radians(angle)
         x_head = 0.5 + radius * math.cos(radians)
         y_head = radius * math.sin(radians)
 
         fig_gauge = go.Figure()
 
-        # A. La Jauge colorée (Arrière-plan)
+        # A. La Jauge colorée (Fond)
         fig_gauge.add_trace(go.Indicator(
             mode="gauge+number",
             value=visual_score,
@@ -211,8 +210,7 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
                     'tickwidth': 2,
                     'tickcolor': "black"
                 },
-                # TRUC : On rend la barre native transparente pour la cacher !
-                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, 
+                'bar': {'color': "rgba(0,0,0,0)", 'thickness': 0}, # Barre invisible
                 'bgcolor': "white",
                 'borderwidth': 2,
                 'bordercolor': "#bdc3c7",
@@ -230,17 +228,14 @@ if st.session_state.api_data and st.session_state.current_client_id == selected_
             }
         ))
 
-        # B. L'Aiguille Droite (Dessinée manuellement par dessus)
-        fig_gauge.add_annotation(
-            x=x_head, y=y_head,       # Pointe de l'aiguille
-            ax=0.5, ay=0,             # Base de l'aiguille (Centre)
-            xref="paper", yref="paper",
-            axref="paper", ayref="paper",
-            showarrow=True,
-            arrowhead=2,              
-            arrowsize=1,
-            arrowwidth=4,             # Epaisseur de l'aiguille
-            arrowcolor="black"        # Couleur noire
+        # B. L'Aiguille Droite (CORRECTION : Utilisation de add_shape TYPE LINE)
+        # Cela remplace 'add_annotation' qui causait le crash sur le Cloud
+        fig_gauge.add_shape(
+            type="line",
+            x0=0.5, y0=0,        # Centre
+            x1=x_head, y1=y_head, # Pointe calculée
+            line=dict(color="black", width=4),
+            xref="paper", yref="paper"
         )
         
         # C. Le "clou" central
